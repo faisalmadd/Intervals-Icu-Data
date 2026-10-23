@@ -79,49 +79,49 @@
         "path": "latest.json",
         "json_path": "$",
         "present": true,
-        "updated_at": "2026-10-23T15:37:53.730697+00:00",
+        "updated_at": "2026-10-23T19:30:47.504146+00:00",
         "holds": "Current training data and companion overview"
       },
       {
         "path": "routes.json",
         "json_path": "$.events",
         "present": true,
-        "updated_at": "2026-10-23T15:38:07.969033+00:00",
+        "updated_at": "2026-10-23T19:30:50.413023+00:00",
         "holds": "Planned route validity, terrain, weather and compact snapshots"
       },
       {
         "path": "intervals.json",
         "json_path": "$.activities",
         "present": true,
-        "updated_at": "2026-10-23T15:38:07.969461+00:00",
+        "updated_at": "2026-10-23T19:30:50.413323+00:00",
         "holds": "Completed session interval, structure and DFA detail"
       },
       {
         "path": "history.json",
         "json_path": "$",
         "present": true,
-        "updated_at": "2026-10-23T15:37:51.239100+00:00",
+        "updated_at": "2026-10-23T19:30:43.474797+00:00",
         "holds": "Longitudinal training history"
       },
       {
         "path": "ftp_history.json",
         "json_path": "$",
         "present": true,
-        "updated_at": "2026-10-23T15:37:53.730573+00:00",
+        "updated_at": "2026-10-23T19:30:47.504007+00:00",
         "holds": "FTP progression"
       },
       {
         "path": "saved_workouts.json",
         "json_path": "$",
         "present": true,
-        "updated_at": "2026-10-23T15:38:07.970068+00:00",
+        "updated_at": "2026-10-23T19:30:43.474797+00:00",
         "holds": "Read-only saved workout inventory"
       },
       {
         "path": "route_eta_history.json",
         "json_path": "$.activities",
         "present": true,
-        "updated_at": "2026-10-23T15:37:49.888979+00:00",
+        "updated_at": "2026-10-23T19:30:43.474797+00:00",
         "holds": "Rolling 180-day outdoor ETA calibration record"
       }
     ],
@@ -150,7 +150,7 @@
   },
   "metadata": {
     "athlete_id": "REDACTED",
-    "last_updated": "2026-10-23T15:38:02.934743",
+    "last_updated": "2026-10-23T19:30:49.032254",
     "data_range_days": 7,
     "extended_range_days": 28,
     "version": "3.151"
@@ -367,7 +367,7 @@
       "respiration": null,
       "body_fat_pct": null,
       "abdomen_cm": null,
-      "steps": 6916,
+      "steps": 7007,
       "hydration_volume_l": null,
       "kcal_consumed": null,
       "carbohydrates_g": null,
@@ -650,7 +650,7 @@
     "p_max": null,
     "power_model_source": "wellness.sportInfo",
     "vo2max": 51.0,
-    "calculation_timestamp": "2026-10-23T15:38:02.933787",
+    "calculation_timestamp": "2026-10-23T19:30:49.031608",
     "data_quality": {
       "hrv_data_points": 0,
       "rhr_data_points": 7,
@@ -2760,7 +2760,7 @@
       "respiration": null,
       "body_fat_pct": null,
       "abdomen_cm": null,
-      "steps": 6916,
+      "steps": 7007,
       "hydration_volume_l": null,
       "kcal_consumed": null,
       "carbohydrates_g": null,
