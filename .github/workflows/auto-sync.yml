@@ -1,0 +1,426 @@
+name: Auto-Sync Intervals.icu Data
+
+on:
+  schedule:
+    # Every 30 minutes, at :07 and :37 UTC (away from the busy top of the hour).
+    # GitHub runs schedules best-effort; to request a sync, use Run workflow (Sync Now). It waits if another sync is running or queued.
+    # For Fast mode and hybrid schedules, see examples/json-auto-sync/SETUP.md in Section 11.
+    - cron: '7,37 * * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  contents: write
+
+concurrency:
+  group: section11-data-sync
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    # A sync normally finishes in under a minute; this stops a stuck run from using up Actions minutes.
+    timeout-minutes: 15
+
+    steps:
+      - name: Verify default branch
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RUN_REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          # Scheduled runs always use the default branch; their event carries no repository details.
+          if [ "$EVENT_NAME" = "schedule" ]; then
+            echo "✅ Scheduled run on the default branch"
+            exit 0
+          fi
+          if [ -z "$DEFAULT_BRANCH" ] || [ "$RUN_REF" != "refs/heads/${DEFAULT_BRANCH}" ]; then
+            echo "❌ ERROR: This workflow only syncs and publishes from the default branch."
+            echo "Start it again and select the default branch under Run workflow."
+            exit 1
+          fi
+          echo "✅ Running on the default branch"
+
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Use the branch as it is when this job starts, not the commit from when the run was queued,
+          # so a run that waited behind another sync builds on that sync's commit.
+          ref: ${{ github.ref }}
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests
+
+      - name: Verify sync.py exists
+        run: |
+          if [ ! -f sync.py ]; then
+            echo "❌ ERROR: sync.py not found in the repository root!"
+            exit 1
+          fi
+          echo "✅ sync.py found"
+          echo "File size: $(wc -c < sync.py) bytes"
+
+      - name: Verify secrets are set
+        env:
+          ATHLETE_ID: ${{ secrets.ATHLETE_ID }}
+          INTERVALS_KEY: ${{ secrets.INTERVALS_KEY }}
+        run: |
+          if [ -z "$ATHLETE_ID" ]; then
+            echo "❌ ERROR: ATHLETE_ID secret not set!"
+            exit 1
+          fi
+          if [ -z "$INTERVALS_KEY" ]; then
+            echo "❌ ERROR: INTERVALS_KEY secret not set!"
+            exit 1
+          fi
+          echo "✅ All secrets configured"
+
+      - name: Run sync
+        env:
+          ATHLETE_ID: ${{ secrets.ATHLETE_ID }}
+          INTERVALS_KEY: ${{ secrets.INTERVALS_KEY }}
+          GITHUB_REPO: ${{ github.repository }}
+          WEEK_START: ${{ secrets.WEEK_START }}
+          ZONE_PREFERENCE: ${{ secrets.ZONE_PREFERENCE }}
+          SECTION11_ROUTE_WEATHER: ${{ vars.SECTION11_ROUTE_WEATHER }}
+          SECTION11_ROUTE_WEATHER_DEFAULT_START: ${{ vars.SECTION11_ROUTE_WEATHER_DEFAULT_START }}
+        run: |
+          # sync.py prints the first five characters of both credentials; hide them in the log.
+          echo "::add-mask::${ATHLETE_ID:0:5}"
+          echo "::add-mask::${INTERVALS_KEY:0:5}"
+          echo "🔍 Debug info:"
+          echo "  Python version: $(python --version)"
+          echo "  Working directory: $(pwd)"
+          echo "  GITHUB_REPO: $GITHUB_REPO"
+          echo ""
+          echo "🚀 Running sync script..."
+          # Single-writer mode: generate files locally and let this workflow commit them.
+          # Avoid sync.py GitHub API publishing here, because the publish step below
+          # commits the checkout copies of the generated files.
+          python sync.py \
+            --athlete-id "$ATHLETE_ID" \
+            --intervals-key "$INTERVALS_KEY" \
+            --days 7 \
+            --output latest.json || {
+              echo "❌ Sync script failed with exit code $?"
+              exit 1
+            }
+
+      - name: Verify generated data
+        run: |
+          if [ ! -f latest.json ] || [ -L latest.json ]; then
+            echo "❌ latest.json not found"
+            exit 1
+          fi
+          if ! python -m json.tool latest.json > /dev/null; then
+            echo "❌ latest.json is not valid JSON"
+            exit 1
+          fi
+          # A successful sync always rewrites latest.json, so an unchanged tracked copy means nothing was written.
+          if git cat-file -e HEAD:latest.json 2> /dev/null; then
+            git show HEAD:latest.json > "$RUNNER_TEMP/tracked-latest.json"
+            if cmp -s "$RUNNER_TEMP/tracked-latest.json" latest.json; then
+              echo "❌ latest.json was not updated by this sync"
+              exit 1
+            fi
+          else
+            printf 'null\n' > "$RUNNER_TEMP/tracked-latest.json"
+          fi
+          # Self-contained fixed rules, extracted verbatim by the offline tests.
+          cat > "$RUNNER_TEMP/validate-data.py" <<'PY'
+          # BEGIN DATA PUBLICATION RULES
+          import json
+          import os
+          import re
+          import shutil
+          import stat
+          import struct
+          import sys
+          import zlib
+          from pathlib import Path
+
+          MAX_BYTES = 64 * 1024 * 1024
+          MAX_FILES = 128
+          FALLBACK = ('latest.json', 'history.json', 'intervals.json', 'routes.json',
+                      'saved_workouts.json', 'ftp_history.json', 'route_eta_history.json')
+
+          def checked_path(root, relative):
+              if (not isinstance(relative, str) or len(relative) > 240
+                      or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_./-]*', relative)
+                      or any(part.startswith('.') or not part for part in relative.split('/'))
+                      or Path(relative).suffix not in ('.json', '.png')):
+                  raise ValueError('unsafe data path')
+              target = root
+              parts = relative.split('/')
+              for index, part in enumerate(parts):
+                  target = target / part
+                  if target.is_symlink():
+                      raise ValueError('symlink data path')
+                  if target.exists():
+                      mode = target.stat().st_mode
+                      if not (stat.S_ISREG(mode) if index == len(parts) - 1 else stat.S_ISDIR(mode)):
+                          raise ValueError('non-ordinary data path')
+              return target
+
+          def read_data(root, relative):
+              target = checked_path(root, relative)
+              if target.stat().st_size > MAX_BYTES:
+                  raise ValueError('data file exceeds 64 MiB')
+              content = target.read_bytes()
+              if len(content) > MAX_BYTES:
+                  raise ValueError('data file exceeds 64 MiB')
+              if target.suffix == '.json':
+                  def invalid_constant(value):
+                      raise ValueError('non-finite JSON number')
+                  json.loads(content, parse_constant=invalid_constant)
+              else:
+                  if (len(content) < 33 or content[:8] != b'\x89PNG\r\n\x1a\n'
+                          or content[8:16] != b'\x00\x00\x00\x0dIHDR'
+                          or struct.unpack('>I', content[29:33])[0] != zlib.crc32(content[12:29]) & 0xffffffff):
+                      raise ValueError('invalid PNG signature or IHDR')
+                  width, height, depth, color, compression, filtering, interlace = struct.unpack('>IIBBBBB', content[16:29])
+                  depths = {0: (1, 2, 4, 8, 16), 2: (8, 16), 3: (1, 2, 4, 8), 4: (8, 16), 6: (8, 16)}
+                  if (not 0 < width <= 16384 or not 0 < height <= 16384 or depth not in depths.get(color, ())
+                          or compression or filtering or interlace not in (0, 1)):
+                      raise ValueError('invalid PNG IHDR fields')
+              return content
+
+          def declared(document, root):
+              overview = document['data_overview']
+              paths = overview['managed_files']
+              if (overview.get('version') != 1 or not isinstance(paths, list)
+                      or not 1 <= len(paths) <= MAX_FILES or not all(isinstance(p, str) for p in paths)
+                      or len(set(paths)) != len(paths) or 'latest.json' not in paths):
+                  raise ValueError('invalid sync file declaration')
+              for relative in paths:
+                  checked_path(root, relative)
+              return sorted(paths)
+
+          def plan(root, previous=None):
+              latest = json.loads(read_data(root, 'latest.json'))
+              mode = 'declared'
+              try:
+                  current = declared(latest, root)
+                  for relative in current:
+                      read_data(root, relative)
+              except (KeyError, TypeError, ValueError, OSError):
+                  mode = 'legacy_fallback'
+                  current = []
+                  for relative in FALLBACK:
+                      target = checked_path(root, relative)
+                      if target.exists():
+                          read_data(root, relative)
+                          current.append(relative)
+              removed = []
+              if mode == 'declared' and previous is not None:
+                  try:
+                      old = declared(previous, root)
+                      removed = sorted(set(old) - set(current))
+                      for relative in removed:
+                          target = checked_path(root, relative)
+                          if target.exists():
+                              read_data(root, relative)
+                  except (KeyError, TypeError, ValueError, OSError):
+                      # Invalid prior ownership evidence never authorizes deletion.
+                      removed = []
+              return {'mode': mode, 'saved': sorted(current), 'removed': removed,
+                      'touched': sorted(set(current) | set(removed))}
+
+          def prepare(root, previous_path, stage):
+              try:
+                  previous = json.loads(previous_path.read_bytes())
+              except (OSError, ValueError):
+                  previous = None
+              result = plan(root, previous)
+              stage.mkdir()  # A new runner-local stage, never merge old contents.
+              for relative in result['saved']:
+                  target = stage / 'files' / relative
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  target.write_bytes(read_data(root, relative))
+              (stage / 'plan.json').write_text(json.dumps(result))
+              for key in ('saved', 'removed', 'touched'):
+                  (stage / (key + '.txt')).write_text(''.join(p + '\n' for p in result[key]))
+              print('Publication validation:', result['mode'], len(result['saved']), 'files')
+
+          def restore(root, stage):
+              result = json.loads((stage / 'plan.json').read_bytes())
+              # Validate every destination after reset before any write or deletion.
+              for relative in result['touched']:
+                  checked_path(root, relative)
+              for relative in result['saved']:
+                  read_data(stage / 'files', relative)
+              for relative in result['removed']:
+                  checked_path(root, relative).unlink(missing_ok=True)
+              for relative in result['saved']:
+                  target = checked_path(root, relative)
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copyfile(stage / 'files' / relative, target)
+
+          if __name__ == '__main__':
+              root = Path.cwd()
+              stage = Path(os.environ['RUNNER_TEMP']) / 'section11-output'
+              if sys.argv[1] == 'prepare':
+                  prepare(root, Path(os.environ['RUNNER_TEMP']) / 'tracked-latest.json', stage)
+              elif sys.argv[1] == 'restore':
+                  restore(root, stage)
+              else:
+                  raise ValueError('unknown publication operation')
+          # END DATA PUBLICATION RULES
+          PY
+          python "$RUNNER_TEMP/validate-data.py" prepare
+          echo "✅ Generated data verified"
+          echo "latest.json size: $(wc -c < latest.json) bytes"
+
+      - name: Upload data files for download
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: training-data
+          path: |
+            latest.json
+            history.json
+            intervals.json
+            routes.json
+            saved_workouts.json
+            ftp_history.json
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Publish data and update README
+        env:
+          RUN_BRANCH: ${{ github.ref_name }}
+        run: |
+          STAGE_DIR="$RUNNER_TEMP/section11-output"
+          mapfile -t GENERATED < "$STAGE_DIR/touched.txt"
+          mapfile -t SAVED < "$STAGE_DIR/saved.txt"
+          mapfile -t REMOVED < "$STAGE_DIR/removed.txt"
+          NOW=$(date -u +%s)
+          SYNC_TIME=$(date -u -d "@${NOW}" +"%Y-%m-%d %H:%M:%S UTC")
+          ARCHIVE_PATH="archive/$(date -u -d "@${NOW}" +"%Y-%m")/$(date -u -d "@${NOW}" +"%Y-%m-%d").json"
+          CHECKOUT_SHA=$(git rev-parse HEAD)
+
+          # Publish only to the repository's default branch, and only from a run on that branch.
+          if ! REMOTE_HEAD=$(git ls-remote --symref origin HEAD); then
+            echo "❌ ERROR: Could not read the repository's default branch. Nothing was published."
+            exit 1
+          fi
+          TARGET_BRANCH=$(printf '%s\n' "$REMOTE_HEAD" | sed -n 's#^ref: refs/heads/\(.*\)[[:space:]]HEAD$#\1#p')
+          if [ -z "$TARGET_BRANCH" ] || [ "$TARGET_BRANCH" != "$RUN_BRANCH" ]; then
+            echo "❌ ERROR: Could not confirm that this run is on the default branch. Nothing was published."
+            exit 1
+          fi
+
+          # Verified output is already staged outside the tree for reset/retry.
+
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+
+          MAX_ATTEMPTS=3
+          ATTEMPT=1
+          PUSHED=()
+          git fetch --quiet --depth=1 origin "refs/heads/${TARGET_BRANCH}"
+          UPSTREAM_SHA=$(git rev-parse FETCH_HEAD)
+          while true; do
+            # Fail closed if generated data changed in the repository after checkout.
+            # Reached only before any push, or after a read-back confirmed no commit from this run is on the branch.
+            CHANGED=$(git diff --name-only "$CHECKOUT_SHA" "$UPSTREAM_SHA" -- "${GENERATED[@]}" "$ARCHIVE_PATH")
+            if [ -n "$CHANGED" ]; then
+              echo "❌ ERROR: Generated data changed in the repository during this run. Nothing was published."
+              echo "Changed files:"
+              printf '%s\n' "$CHANGED" | sed 's/^/  /'
+              echo "The next run syncs again from the updated repository."
+              exit 1
+            fi
+
+            # Rebuild the commit on the latest default branch so other changes are kept.
+            git reset --quiet --hard "$UPSTREAM_SHA"
+            python "$RUNNER_TEMP/validate-data.py" restore
+
+            # One archive file per UTC day, overwritten by later runs that day.
+            mkdir -p "$(dirname "$ARCHIVE_PATH")"
+            cp latest.json "$ARCHIVE_PATH"
+            echo "✅ Archived to ${ARCHIVE_PATH}"
+
+            if [ -f README.md ]; then
+              if grep -q "Last successful sync:" README.md; then
+                echo "Found existing timestamp line, updating..."
+                sed -i "s/\*\*Last successful sync:\*\*.*/\*\*Last successful sync:\*\* ${SYNC_TIME}/" README.md
+              else
+                echo "No timestamp found, adding new line..."
+                sed -i "/badge.svg)/a\\\n\*\*Last successful sync:\*\* ${SYNC_TIME}\n" README.md
+              fi
+              git add -- README.md
+            fi
+
+            git add -- "${SAVED[@]}" "$ARCHIVE_PATH"
+            if [ "${#REMOVED[@]}" -gt 0 ]; then
+              git rm --ignore-unmatch -- "${REMOVED[@]}"
+            fi
+            if [ -n "$(git ls-files --unmerged)" ]; then
+              echo "❌ ERROR: Unresolved changes in the working tree. Nothing was published."
+              exit 1
+            fi
+            if git diff --cached --quiet; then
+              echo "⏭️  No changes to publish"
+              exit 0
+            fi
+            git commit --quiet -m "Sync training data - ${SYNC_TIME}"
+            LOCAL_SHA=$(git rev-parse HEAD)
+            echo "Pushing commit ${LOCAL_SHA} built on ${UPSTREAM_SHA} (attempt ${ATTEMPT})"
+
+            if git push --quiet origin "HEAD:refs/heads/${TARGET_BRANCH}"; then
+              echo "✅ Data, archive and README published in one commit (attempt ${ATTEMPT})"
+              break
+            fi
+            PUSHED+=("$LOCAL_SHA")
+
+            # The push did not report success, but it may still have landed.
+            # Read the branch back with full ancestry (no --depth) before deciding whether to retry.
+            echo "⚠️ Push did not report success (attempt ${ATTEMPT}). Reading the branch back before any retry..."
+            if ! git fetch --quiet origin "refs/heads/${TARGET_BRANCH}" || ! REMOTE_SHA=$(git rev-parse --verify --quiet FETCH_HEAD); then
+              echo "❌ OUTCOME UNKNOWN: The branch could not be read back after the push."
+              echo "The commit from this run may or may not have landed. No retry was made."
+              echo "Before running the workflow again, look for this run's commit(s) ${PUSHED[*]} anywhere in the history of ${TARGET_BRANCH}, not only as its latest commit. Until you can tell, the outcome is unknown, not failed."
+              exit 2
+            fi
+            APPLIED=""
+            for c in "${PUSHED[@]}"; do
+              if [ "$c" = "$REMOTE_SHA" ]; then
+                APPLIED="exact"
+                break
+              fi
+              RC=0
+              git merge-base --is-ancestor "$c" "$REMOTE_SHA" || RC=$?
+              if [ "$RC" -eq 0 ]; then
+                APPLIED="ancestor"
+                break
+              elif [ "$RC" -ne 1 ]; then
+                echo "❌ OUTCOME UNKNOWN: Could not determine whether this run's commit is on ${TARGET_BRANCH}."
+                echo "The commit from this run may or may not have landed. No retry was made."
+                echo "Before running the workflow again, look for this run's commit(s) ${PUSHED[*]} anywhere in the history of ${TARGET_BRANCH}, not only as its latest commit. Until you can tell, the outcome is unknown, not failed."
+                exit 2
+              fi
+            done
+            if [ "$APPLIED" = "exact" ]; then
+              echo "✅ The push response failed, but commit ${c} was verified as the current head of ${TARGET_BRANCH}."
+              echo "✅ Data, archive and README are published."
+              break
+            fi
+            if [ "$APPLIED" = "ancestor" ]; then
+              echo "✅ The push response failed, but commit ${c} was verified in the history of ${TARGET_BRANCH}, which has since moved on."
+              echo "✅ Data, archive and README are published."
+              break
+            fi
+
+            # Read-back confirmed that no commit from this run is on the branch.
+            if [ "$ATTEMPT" -ge "$MAX_ATTEMPTS" ]; then
+              echo "❌ ERROR: The push was not accepted after ${MAX_ATTEMPTS} attempts."
+              echo "Read-back confirmed that no commit from this run is on ${TARGET_BRANCH}."
+              exit 1
+          
