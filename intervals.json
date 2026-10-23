@@ -1,0 +1,892 @@
+{
+  "generated_at": "2026-10-23T15:37:55.280437",
+  "schema_version": 2,
+  "version": "3.151",
+  "script_hash": "d7cabb3f087b",
+  "scan_hours": 72,
+  "retention_days": 14,
+  "activities": [
+    {
+      "activity_id": "i200714574",
+      "date": "2026-10-23",
+      "start_datetime": "2026-10-23T19:36:13",
+      "type": "Run",
+      "name": "Evening Run",
+      "interval_summary": null,
+      "intervals": [
+        {
+          "type": "RECOVERY",
+          "duration_secs": 1690,
+          "moving_secs": 1690,
+          "start_secs": 0,
+          "end_secs": 1690,
+          "avg_hr": 145,
+          "max_hr": 180,
+          "min_hr": 96,
+          "avg_cadence": 72.90974,
+          "zone": 2
+        }
+      ],
+      "zone_basis": "hr",
+      "session_structure": {
+        "version": 4,
+        "method": "fixed_elapsed_thirds",
+        "status": "no_plan",
+        "thirds": [
+          [
+            0,
+            563,
+            null,
+            null,
+            133.5,
+            78.2,
+            0.0,
+            97.34,
+            98.93,
+            null
+          ],
+          [
+            563,
+            1126,
+            null,
+            null,
+            157.7,
+            70.4,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ],
+          [
+            1126,
+            1689,
+            null,
+            null,
+            145.2,
+            70.2,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ]
+        ],
+        "cache": {
+          "activity_key": "170e5fbaed453a3169dd5eb8526ce811c86f6576e84dcf6c13b5b989d1040f46",
+          "event_key": null,
+          "plan_key": null,
+          "sampled_at": "2026-10-23T15:38:00.022152+00:00",
+          "next_refresh_at": "2026-10-24T15:38:00.022152+00:00"
+        }
+      }
+    },
+    {
+      "activity_id": "i200673911",
+      "date": "2026-10-21",
+      "start_datetime": "2026-10-21T20:50:31",
+      "type": "Run",
+      "name": "Night Run",
+      "interval_summary": null,
+      "intervals": [
+        {
+          "type": "RECOVERY",
+          "duration_secs": 2608,
+          "moving_secs": 2608,
+          "start_secs": 0,
+          "end_secs": 2608,
+          "avg_hr": 140,
+          "max_hr": 151,
+          "min_hr": 89,
+          "avg_cadence": 78.05227,
+          "zone": 2
+        }
+      ],
+      "zone_basis": "hr",
+      "session_structure": {
+        "version": 4,
+        "method": "fixed_elapsed_thirds",
+        "status": "no_plan",
+        "thirds": [
+          [
+            0,
+            869,
+            null,
+            null,
+            136.2,
+            81.1,
+            0.0,
+            99.42,
+            99.31,
+            null
+          ],
+          [
+            869,
+            1738,
+            null,
+            null,
+            142.4,
+            77.0,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ],
+          [
+            1738,
+            2607,
+            null,
+            null,
+            142.8,
+            76.1,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ]
+        ],
+        "cache": {
+          "activity_key": "da40a82d68f0d95a043c28847f43a13a8aa54909a2e9c191a029d202d8240455",
+          "event_key": null,
+          "plan_key": null,
+          "sampled_at": "2026-10-23T15:38:00.022152+00:00",
+          "next_refresh_at": "2026-10-24T15:38:00.022152+00:00"
+        }
+      }
+    },
+    {
+      "activity_id": "i200673901",
+      "date": "2026-10-18",
+      "start_datetime": "2026-10-18T18:39:05",
+      "type": "Run",
+      "name": "Evening Run",
+      "interval_summary": null,
+      "intervals": [
+        {
+          "type": "RECOVERY",
+          "duration_secs": 2152,
+          "moving_secs": 2152,
+          "start_secs": 0,
+          "end_secs": 2152,
+          "avg_hr": 138,
+          "max_hr": 149,
+          "min_hr": 86,
+          "avg_cadence": 79.540794,
+          "zone": 2
+        }
+      ],
+      "zone_basis": "hr",
+      "session_structure": {
+        "version": 4,
+        "method": "fixed_elapsed_thirds",
+        "status": "no_plan",
+        "thirds": [
+          [
+            0,
+            717,
+            null,
+            null,
+            132.5,
+            82.0,
+            0.0,
+            99.16,
+            99.02,
+            null
+          ],
+          [
+            717,
+            1434,
+            null,
+            null,
+            141.4,
+            79.3,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ],
+          [
+            1434,
+            2151,
+            null,
+            null,
+            142.3,
+            77.3,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ]
+        ],
+        "cache": {
+          "activity_key": "186a2422cabf8cd3f6debd0dde7e7c93be5bf2fb81c028aab0db684b5c62c868",
+          "event_key": null,
+          "plan_key": null,
+          "sampled_at": "2026-10-23T15:38:00.022152+00:00",
+          "next_refresh_at": "2026-10-24T15:38:00.022152+00:00"
+        }
+      }
+    },
+    {
+      "activity_id": "i200673894",
+      "date": "2026-10-17",
+      "start_datetime": "2026-10-17T17:23:07",
+      "type": "Run",
+      "name": "Afternoon Run",
+      "interval_summary": null,
+      "intervals": [
+        {
+          "type": "RECOVERY",
+          "duration_secs": 2108,
+          "moving_secs": 2108,
+          "start_secs": 0,
+          "end_secs": 2108,
+          "avg_hr": 129,
+          "max_hr": 150,
+          "min_hr": 91,
+          "avg_cadence": 70.161674,
+          "zone": 1
+        }
+      ],
+      "zone_basis": "hr",
+      "session_structure": {
+        "version": 4,
+        "method": "fixed_elapsed_thirds",
+        "status": "no_plan",
+        "thirds": [
+          [
+            0,
+            702,
+            null,
+            null,
+            119.0,
+            69.6,
+            0.0,
+            99.43,
+            99.29,
+            null
+          ],
+          [
+            702,
+            1404,
+            null,
+            null,
+            140.1,
+            76.4,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ],
+          [
+            1404,
+            2107,
+            null,
+            null,
+            130.8,
+            64.5,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ]
+        ],
+        "cache": {
+          "activity_key": "be01da05191a7c658b6ddeae7f326862196c3d9d1bc1d52cb7ba0fa2a8a59170",
+          "event_key": null,
+          "plan_key": null,
+          "sampled_at": "2026-10-23T15:38:00.022152+00:00",
+          "next_refresh_at": "2026-10-24T15:38:00.022152+00:00"
+        }
+      }
+    },
+    {
+      "activity_id": "i200673885",
+      "date": "2026-10-16",
+      "start_datetime": "2026-10-16T18:13:14",
+      "type": "Run",
+      "name": "Evening Run",
+      "interval_summary": null,
+      "intervals": [
+        {
+          "type": "RECOVERY",
+          "duration_secs": 1809,
+          "moving_secs": 1809,
+          "start_secs": 0,
+          "end_secs": 1809,
+          "avg_hr": 136,
+          "max_hr": 153,
+          "min_hr": 74,
+          "avg_cadence": 77.51248,
+          "zone": 1
+        }
+      ],
+      "zone_basis": "hr",
+      "session_structure": {
+        "version": 4,
+        "method": "fixed_elapsed_thirds",
+        "status": "no_plan",
+        "thirds": [
+          [
+            0,
+            602,
+            null,
+            null,
+            125.7,
+            82.2,
+            0.0,
+            98.17,
+            99.0,
+            null
+          ],
+          [
+            602,
+            1205,
+            null,
+            null,
+            141.1,
+            76.5,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ],
+          [
+            1205,
+            1808,
+            null,
+            null,
+            142.2,
+            73.9,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ]
+        ],
+        "cache": {
+          "activity_key": "47e9273b60baedf6be76406a102884e16ab6494bfbfa4338fda97829de7d7d30",
+          "event_key": null,
+          "plan_key": null,
+          "sampled_at": "2026-10-23T15:38:00.022152+00:00",
+          "next_refresh_at": "2026-10-24T15:38:00.022152+00:00"
+        }
+      }
+    },
+    {
+      "activity_id": "i200673890",
+      "date": "2026-10-14",
+      "start_datetime": "2026-10-14T18:31:48",
+      "type": "Run",
+      "name": "Evening Run",
+      "interval_summary": null,
+      "intervals": [
+        {
+          "type": "RECOVERY",
+          "duration_secs": 1965,
+          "moving_secs": 1965,
+          "start_secs": 0,
+          "end_secs": 1965,
+          "avg_hr": 139,
+          "max_hr": 152,
+          "min_hr": 98,
+          "avg_cadence": 76.06633,
+          "zone": 2
+        }
+      ],
+      "zone_basis": "hr",
+      "session_structure": {
+        "version": 4,
+        "method": "fixed_elapsed_thirds",
+        "status": "no_plan",
+        "thirds": [
+          [
+            0,
+            654,
+            null,
+            null,
+            133.1,
+            79.7,
+            0.0,
+            99.54,
+            99.24,
+            null
+          ],
+          [
+            654,
+            1309,
+            null,
+            null,
+            142.5,
+            75.0,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ],
+          [
+            1309,
+            1964,
+            null,
+            null,
+            142.3,
+            73.5,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ]
+        ],
+        "cache": {
+          "activity_key": "0fe183140f79a51cb1d38212778563002eccded170be3f9dbc17d731ffeead4e",
+          "event_key": null,
+          "plan_key": null,
+          "sampled_at": "2026-10-23T15:38:00.022152+00:00",
+          "next_refresh_at": "2026-10-24T15:38:00.022152+00:00"
+        }
+      }
+    },
+    {
+      "activity_id": "i200673883",
+      "date": "2026-10-11",
+      "start_datetime": "2026-10-11T17:42:06",
+      "type": "Run",
+      "name": "Afternoon Run",
+      "interval_summary": null,
+      "intervals": [
+        {
+          "type": "RECOVERY",
+          "duration_secs": 1521,
+          "moving_secs": 1521,
+          "start_secs": 0,
+          "end_secs": 1521,
+          "avg_hr": 138,
+          "max_hr": 153,
+          "min_hr": 100,
+          "avg_cadence": 79.15435,
+          "zone": 2
+        }
+      ],
+      "zone_basis": "hr",
+      "session_structure": {
+        "version": 4,
+        "method": "fixed_elapsed_thirds",
+        "status": "no_plan",
+        "thirds": [
+          [
+            0,
+            506,
+            null,
+            null,
+            128.6,
+            83.1,
+            0.0,
+            98.02,
+            99.01,
+            null
+          ],
+          [
+            506,
+            1013,
+            null,
+            null,
+            142.5,
+            78.7,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ],
+          [
+            1013,
+            1520,
+            null,
+            null,
+            144.4,
+            75.8,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ]
+        ],
+        "cache": {
+          "activity_key": "fbb27192659a470a6561a056bcb0b1dcf38117157f4324365b015baa55a65db6",
+          "event_key": null,
+          "plan_key": null,
+          "sampled_at": "2026-10-23T15:38:00.022152+00:00",
+          "next_refresh_at": "2026-10-24T15:38:00.022152+00:00"
+        }
+      }
+    },
+    {
+      "activity_id": "i200673875",
+      "date": "2026-10-10",
+      "start_datetime": "2026-10-10T18:38:48",
+      "type": "Run",
+      "name": "Evening Run",
+      "interval_summary": null,
+      "intervals": [
+        {
+          "type": "RECOVERY",
+          "duration_secs": 1873,
+          "moving_secs": 1873,
+          "start_secs": 0,
+          "end_secs": 1873,
+          "avg_hr": 126,
+          "max_hr": 157,
+          "min_hr": 85,
+          "avg_cadence": 67.63807,
+          "zone": 1
+        }
+      ],
+      "zone_basis": "hr",
+      "session_structure": {
+        "version": 4,
+        "method": "fixed_elapsed_thirds",
+        "status": "no_plan",
+        "thirds": [
+          [
+            0,
+            624,
+            null,
+            null,
+            112.8,
+            66.5,
+            0.0,
+            98.4,
+            99.2,
+            null
+          ],
+          [
+            624,
+            1248,
+            null,
+            null,
+            140.7,
+            72.7,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ],
+          [
+            1248,
+            1872,
+            null,
+            null,
+            126.5,
+            63.7,
+            0.0,
+            99.68,
+            99.68,
+            null
+          ]
+        ],
+        "cache": {
+          "activity_key": "aab813337e69aeb41d3e0627c1601950003f102919f5e6add83246329831fc0f",
+          "event_key": null,
+          "plan_key": null,
+          "sampled_at": "2026-10-23T15:38:00.022152+00:00",
+          "next_refresh_at": "2026-10-24T15:38:00.022152+00:00"
+        }
+      }
+    },
+    {
+      "activity_id": "i200673863",
+      "date": "2026-10-09",
+      "start_datetime": "2026-10-09T18:31:54",
+      "type": "Run",
+      "name": "Evening Run",
+      "interval_summary": null,
+      "intervals": [
+        {
+          "type": "RECOVERY",
+          "duration_secs": 2051,
+          "moving_secs": 2051,
+          "start_secs": 0,
+          "end_secs": 2051,
+          "avg_hr": 137,
+          "max_hr": 158,
+          "min_hr": 92,
+          "avg_cadence": 69.81183,
+          "zone": 1
+        }
+      ],
+      "zone_basis": "hr",
+      "session_structure": {
+        "version": 4,
+        "method": "fixed_elapsed_thirds",
+        "status": "no_plan",
+        "thirds": [
+          [
+            0,
+            683,
+            null,
+            null,
+            123.9,
+            66.1,
+            0.0,
+            98.54,
+            99.27,
+            null
+          ],
+          [
+            683,
+            1366,
+            null,
+            null,
+            147.0,
+            76.6,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ],
+          [
+            1366,
+            2050,
+            null,
+            null,
+            140.2,
+            66.7,
+            0.0,
+            100.0,
+            100.0,
+            null
+          ]
+        ],
+        "cache": {
+          "activity_key": "ad28108c84e7e4f62b677bcbde50f9a585d85d1a5f727a47447bd96389087043",
+          "event_key": null,
+          "plan_key": null,
+          "sampled_at": "2026-10-23T15:38:00.022152+00:00",
+          "next_refresh_at": "2026-10-24T15:38:00.022152+00:00"
+        }
+      }
+    },
+    {
+      "activity_id": "i200673906",
+      "date": "2026-10-18",
+      "start_datetime": "2026-10-18T22:08:07",
+      "type": "Workout",
+      "name": "Night Workout",
+      "interval_summary": null,
+      "intervals": [],
+      "session_structure": {
+        "version": 4,
+        "method": "fixed_elapsed_thirds",
+        "status": "no_plan",
+        "thirds": [
+          [
+            0,
+            473,
+            null,
+            null,
+            101.5,
+            null,
+            0.0,
+            20.08,
+            0.0,
+            null
+          ],
+          [
+            473,
+            946,
+            null,
+            null,
+            119.9,
+            null,
+            0.0,
+            20.08,
+            0.0,
+            null
+          ],
+          [
+            946,
+            1420,
+            null,
+            null,
+            124.9,
+            null,
+            0.0,
+            19.83,
+            0.0,
+            null
+          ]
+        ],
+        "cache": {
+          "activity_key": "65e90112546e2e892935eab2819bc9fbaf33b3c2de188c46d132dce276d544e9",
+          "event_key": null,
+          "plan_key": null,
+          "sampled_at": "2026-10-23T15:38:00.022152+00:00",
+          "next_refresh_at": "2026-10-24T15:38:00.022152+00:00"
+        }
+      }
+    }
+  ],
+  "fetch_state": {
+    "i200714574": {
+      "date": "2026-10-23",
+      "intervals": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "ok",
+        "reason": "ok",
+        "source_icu_sync_date": "2026-10-23T12:07:35.796+00:00"
+      },
+      "streams": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "pending",
+        "reason": "no_data",
+        "next_retry_at": "2026-10-23T15:42:55.280437"
+      }
+    },
+    "i200673911": {
+      "date": "2026-10-21",
+      "intervals": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "ok",
+        "reason": "ok",
+        "source_icu_sync_date": "2026-10-23T09:52:29.513+00:00"
+      },
+      "streams": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "pending",
+        "reason": "no_data",
+        "next_retry_at": "2026-10-23T15:42:55.280437"
+      }
+    },
+    "i200673901": {
+      "date": "2026-10-18",
+      "intervals": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "ok",
+        "reason": "ok",
+        "source_icu_sync_date": "2026-10-23T09:52:27.227+00:00"
+      },
+      "streams": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "tombstone",
+        "reason": "retry_expired"
+      }
+    },
+    "i200673894": {
+      "date": "2026-10-17",
+      "intervals": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "ok",
+        "reason": "ok",
+        "source_icu_sync_date": "2026-10-23T09:52:26.023+00:00"
+      },
+      "streams": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "tombstone",
+        "reason": "retry_expired"
+      }
+    },
+    "i200673885": {
+      "date": "2026-10-16",
+      "intervals": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "ok",
+        "reason": "ok",
+        "source_icu_sync_date": "2026-10-23T09:52:23.028+00:00"
+      },
+      "streams": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "tombstone",
+        "reason": "retry_expired"
+      }
+    },
+    "i200673890": {
+      "date": "2026-10-14",
+      "intervals": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "ok",
+        "reason": "ok",
+        "source_icu_sync_date": "2026-10-23T09:52:24.802+00:00"
+      },
+      "streams": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "tombstone",
+        "reason": "retry_expired"
+      }
+    },
+    "i200673883": {
+      "date": "2026-10-11",
+      "intervals": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "ok",
+        "reason": "ok",
+        "source_icu_sync_date": "2026-10-23T09:52:22.516+00:00"
+      },
+      "streams": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "tombstone",
+        "reason": "retry_expired"
+      }
+    },
+    "i200673875": {
+      "date": "2026-10-10",
+      "intervals": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "ok",
+        "reason": "ok",
+        "source_icu_sync_date": "2026-10-23T09:52:19.925+00:00"
+      },
+      "streams": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "tombstone",
+        "reason": "retry_expired"
+      }
+    },
+    "i200673863": {
+      "date": "2026-10-09",
+      "intervals": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "ok",
+        "reason": "ok",
+        "source_icu_sync_date": "2026-10-23T09:52:17.224+00:00"
+      },
+      "streams": {
+        "attempts": 1,
+        "first_seen": "2026-10-23T15:37:55.280437",
+        "last_attempt": "2026-10-23T15:37:55.280437",
+        "status": "tombstone",
+        "reason": "retry_expired"
+      }
+    }
+  }
+}
