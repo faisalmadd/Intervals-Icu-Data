@@ -423,4 +423,29 @@ jobs:
               echo "❌ ERROR: The push was not accepted after ${MAX_ATTEMPTS} attempts."
               echo "Read-back confirmed that no commit from this run is on ${TARGET_BRANCH}."
               exit 1
-          
+            fi
+            echo "⚠️ Read-back confirmed the commit is not on ${TARGET_BRANCH}. Retrying with the latest repository state..."
+            sleep $((ATTEMPT * 5))
+            ATTEMPT=$((ATTEMPT + 1))
+            UPSTREAM_SHA="$REMOTE_SHA"
+          done
+
+      - name: Show result
+        env:
+          REPOSITORY: ${{ github.repository }}
+          RUN_BRANCH: ${{ github.ref_name }}
+        run: |
+          echo "✅ Sync completed successfully!"
+          echo "📊 View data: https://raw.githubusercontent.com/${REPOSITORY}/${RUN_BRANCH}/latest.json"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "::error::⚠️ Sync failed! Check the logs above for details."
+          echo "Common issues:"
+          echo "  - Manual run started from a branch other than the default branch"
+          echo "  - Check ATHLETE_ID and INTERVALS_KEY secrets"
+          echo "  - Verify Intervals.icu API is accessible"
+          echo "  - Generated data missing, invalid, or not updated by sync.py"
+          echo "  - Generated data changed in the repository during the run (the next run syncs again)"
+          echo "  - Push rejected or not permitted: check workflow permissions"
