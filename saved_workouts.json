@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-23T15:37:53.730980+00:00",
+  "generated_at": "2026-10-23T22:34:20.806890+00:00",
   "schema_version": 1,
   "version": "3.151",
   "script_hash": "d7cabb3f087b",
@@ -8,7 +8,7 @@
   "refresh": {
     "status": "ok",
     "consistency": "consistent",
-    "last_success_at": "2026-10-23T15:37:53.730980+00:00",
+    "last_success_at": "2026-10-23T22:34:20.806890+00:00",
     "last_content_change_at": "2026-10-23T15:37:53.730980+00:00",
     "refresh_interval_secs": 21600
   },
@@ -34,9 +34,9 @@
   ],
   "workouts": [],
   "fetch_state": {
-    "last_attempt_at": "2026-10-23T15:37:53.730980+00:00",
+    "last_attempt_at": "2026-10-23T22:34:20.806890+00:00",
     "consecutive_failures": 0,
-    "next_attempt_after": "2026-10-23T21:37:53.730980+00:00",
+    "next_attempt_after": "2026-10-24T04:34:20.806890+00:00",
     "last_error": null,
     "content_digest": "sha256:e9be3f1ff5e316e6c7d9841d1ccf15aac679fe108bebeb6be9cd20387c52ad1f",
     "endpoint_mismatch_count": 0,
