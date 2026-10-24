@@ -1,0 +1,48 @@
+name: Intervals.icu Sync
+
+on:
+  schedule:
+    - cron: '0 14 * * *'  # 14:00 UTC = 22:00 UTC+8 (Nightly sync)
+  workflow_dispatch:
+    inputs:
+      full_backfill:
+        description: 'Backfill all history from account inception (true/false)'
+        required: false
+        default: 'false'
+        type: boolean
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run sync
+        env:
+          INTERVALS_API_KEY: ${{ secrets.INTERVALS_API_KEY || secrets.INTERVALS_KEY }}
+          INTERVALS_ATHLETE_ID: ${{ secrets.INTERVALS_ATHLETE_ID || secrets.ATHLETE_ID }}
+          GDRIVE_SERVICE_ACCOUNT_KEY: ${{ secrets.GDRIVE_SERVICE_ACCOUNT_KEY }}
+          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+          FULL_BACKFILL: ${{ github.event.inputs.full_backfill || 'false' }}
+        run: python src/sync.py
+
+      - name: Commit & push data
+        run: |
+          git config user.name "intervals-sync-bot"
+          git config user.email "bot@intervals-sync.local"
+          git add data/
+          git diff --cached --quiet || git commit -m "📊 Sync $(date -u +'%Y-%m-%d %H:%M UTC') [skip ci]"
+          git push
