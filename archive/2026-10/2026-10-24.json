@@ -79,49 +79,49 @@
         "path": "latest.json",
         "json_path": "$",
         "present": true,
-        "updated_at": "2026-10-24T01:01:00.747258+00:00",
+        "updated_at": "2026-10-24T05:41:06.991710+00:00",
         "holds": "Current training data and companion overview"
       },
       {
         "path": "routes.json",
         "json_path": "$.events",
         "present": true,
-        "updated_at": "2026-10-24T01:01:02.736146+00:00",
+        "updated_at": "2026-10-24T05:41:10.537394+00:00",
         "holds": "Planned route validity, terrain, weather and compact snapshots"
       },
       {
         "path": "intervals.json",
         "json_path": "$.activities",
         "present": true,
-        "updated_at": "2026-10-24T01:01:02.736583+00:00",
+        "updated_at": "2026-10-24T05:41:10.537763+00:00",
         "holds": "Completed session interval, structure and DFA detail"
       },
       {
         "path": "history.json",
         "json_path": "$",
         "present": true,
-        "updated_at": "2026-10-24T01:00:56.141762+00:00",
+        "updated_at": "2026-10-24T05:40:57.089021+00:00",
         "holds": "Longitudinal training history"
       },
       {
         "path": "ftp_history.json",
         "json_path": "$",
         "present": true,
-        "updated_at": "2026-10-24T01:01:00.747048+00:00",
+        "updated_at": "2026-10-24T05:41:06.991552+00:00",
         "holds": "FTP progression"
       },
       {
         "path": "saved_workouts.json",
         "json_path": "$",
         "present": true,
-        "updated_at": "2026-10-24T01:00:56.142348+00:00",
+        "updated_at": "2026-10-24T05:41:10.538182+00:00",
         "holds": "Read-only saved workout inventory"
       },
       {
         "path": "route_eta_history.json",
         "json_path": "$.activities",
         "present": true,
-        "updated_at": "2026-10-24T01:00:56.142348+00:00",
+        "updated_at": "2026-10-24T05:40:57.089021+00:00",
         "holds": "Rolling 180-day outdoor ETA calibration record"
       }
     ],
@@ -150,7 +150,7 @@
   },
   "metadata": {
     "athlete_id": "REDACTED",
-    "last_updated": "2026-10-24T01:01:01.708280",
+    "last_updated": "2026-10-24T05:41:09.381198",
     "data_range_days": 7,
     "extended_range_days": 28,
     "version": "3.151"
@@ -179,15 +179,6 @@
   "athlete_notes": null,
   "alerts": [
     {
-      "metric": "rhr",
-      "value": 65,
-      "severity": "warning",
-      "threshold": "\u2191\u22655bpm vs baseline (56.6)",
-      "context": "RHR 65 is 8.4bpm above baseline. Monitor \u2014 alarm if persists >2 days.",
-      "persistence_days": 1,
-      "tier": 1
-    },
-    {
       "metric": "acwr",
       "value": 1.52,
       "severity": "alarm",
@@ -210,10 +201,10 @@
         "delta_pct": null
       },
       "rhr": {
-        "status": "red",
-        "value": 65,
-        "baseline_7d": 56.6,
-        "delta_bpm": 8.4
+        "status": "green",
+        "value": 53,
+        "baseline_7d": 54.9,
+        "delta_bpm": -1.9
       },
       "sleep": {
         "status": "amber",
@@ -234,9 +225,9 @@
       }
     },
     "signal_summary": {
-      "green": 0,
+      "green": 1,
       "amber": 1,
-      "red": 2,
+      "red": 1,
       "unavailable": 2
     },
     "phase_context": {
@@ -247,7 +238,7 @@
     },
     "race_week_defers": false,
     "modification": null,
-    "reason": "P1 acute overload. start-of-day ACWR 1.52 (as of 2026-10-24, today's load excluded) >= 1.5, corroborated by rhr, sleep.",
+    "reason": "P1 acute overload. start-of-day ACWR 1.52 (as of 2026-10-24, today's load excluded) >= 1.5, corroborated by sleep.",
     "alarm_refs": []
   },
   "health_context": {
@@ -350,7 +341,7 @@
           "unit": "kg"
         }
       },
-      "resting_hr": 65,
+      "resting_hr": 53,
       "hrv": null,
       "sleep_quality": 3,
       "sleep_hours": 5.93,
@@ -372,7 +363,7 @@
       "respiration": null,
       "body_fat_pct": null,
       "abdomen_cm": null,
-      "steps": null,
+      "steps": 638,
       "hydration_volume_l": null,
       "kcal_consumed": null,
       "carbohydrates_g": null,
@@ -400,11 +391,11 @@
     "recovery_index": null,
     "recovery_index_yesterday": null,
     "hrv_baseline_7d": null,
-    "rhr_baseline_7d": 56.6,
+    "rhr_baseline_7d": 54.9,
     "hrv_baseline_28d": 75.0,
-    "rhr_baseline_28d": 53.9,
+    "rhr_baseline_28d": 53.3,
     "latest_hrv": null,
-    "latest_rhr": 65,
+    "latest_rhr": 53,
     "acwr": 1.52,
     "acwr_interpretation": "danger",
     "acwr_scope": "live_retrospective",
@@ -655,7 +646,7 @@
     "p_max": null,
     "power_model_source": "wellness.sportInfo",
     "vo2max": null,
-    "calculation_timestamp": "2026-10-24T01:01:01.707301",
+    "calculation_timestamp": "2026-10-24T05:41:09.380461",
     "data_quality": {
       "hrv_data_points": 0,
       "rhr_data_points": 7,
@@ -2527,7 +2518,7 @@
       "display": {
         "weight": null
       },
-      "resting_hr": 65,
+      "resting_hr": 53,
       "hrv_rmssd": null,
       "hrv_sdnn": null,
       "sleep_hours": 5.93,
@@ -2553,7 +2544,7 @@
       "respiration": null,
       "body_fat_pct": null,
       "abdomen_cm": null,
-      "steps": null,
+      "steps": 638,
       "hydration_volume_l": null,
       "kcal_consumed": null,
       "carbohydrates_g": null,
@@ -2580,7 +2571,7 @@
     "total_tss": 118,
     "activities_count": 4,
     "avg_hrv": null,
-    "avg_resting_hr": 56.6
+    "avg_resting_hr": 54.9
   },
   "race_calendar": {
     "next_race": null,
@@ -2619,9 +2610,9 @@
           "days": 0
         },
         "resting_hr": {
-          "avg": 56.57,
+          "avg": 54.86,
           "min": 50.0,
-          "max": 65.0,
+          "max": 62.0,
           "days": 7
         },
         "sleep_hours": {
@@ -2662,7 +2653,7 @@
       "hrrc_mean": 26.0,
       "hrrc_qualifying": 1,
       "avg_hrv": null,
-      "avg_resting_hr": 56.6,
+      "avg_resting_hr": 54.9,
       "avg_sleep_hours": 7.35,
       "wellness_days": {
         "hrv": 0,
@@ -3180,7 +3171,7 @@
       "days": 1
     },
     "resting_hr": {
-      "avg": 53.9,
+      "avg": 53.33,
       "min": 50.0,
       "max": 68.0,
       "days": 21
