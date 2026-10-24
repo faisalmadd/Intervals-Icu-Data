@@ -16,8 +16,8 @@
   "icu_rolling_ftp": null,
   "icu_rolling_ftp_delta": null,
   "icu_training_load": 12,
-  "icu_atl": 20.304323,
-  "icu_ctl": 18.08617,
+  "icu_atl": 20.307846,
+  "icu_ctl": 18.142372,
   "ss_p_max": null,
   "ss_w_prime": null,
   "ss_cp": null,
@@ -290,5 +290,24 @@
       "average_stride": null
     }
   ],
-  "icu_groups": null
+  "icu_groups": null,
+  "auto_1km_splits": [
+    {
+      "date": "2026-10-18",
+      "activity_id": "i200673906",
+      "activity_name": "Night Workout",
+      "activity_type": "Workout",
+      "split_num": 1,
+      "distance_km": "",
+      "duration_min": 23.68,
+      "pace_min_km": "",
+      "gap_min_km": "",
+      "avg_hr": 115,
+      "max_hr": 138,
+      "elevation_gain_m": "",
+      "elevation_loss_m": "",
+      "avg_cadence_spm": "",
+      "split_type": "RECOVERY"
+    }
+  ]
 }
