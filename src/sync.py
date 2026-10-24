@@ -130,7 +130,7 @@ class IntervalsClient:
 class GDriveClient:
     """Manages uploads to Google Drive with deduplication and error handling."""
 
-    SCOPES = ["https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
+    SCOPES = ["https://www.googleapis.com/auth/drive.file"]
 
     def __init__(
         self,
@@ -151,7 +151,7 @@ class GDriveClient:
                 token_uri="https://oauth2.googleapis.com/token",
                 client_id=client_id,
                 client_secret=client_secret,
-                scopes=self.SCOPES,
+                scopes=None,
             )
             log.info("Google Drive initialized using OAuth 2.0 User Token (Personal Storage Quota)")
         elif sa_key_json:
