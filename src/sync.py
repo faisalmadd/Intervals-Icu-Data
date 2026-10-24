@@ -454,22 +454,23 @@ def compute_1km_splits(streams: dict, activity_meta: dict) -> list[dict]:
             avg_spd = dist_m / dur_s if dur_s > 0 else 0
             pace = _seconds_to_pace(avg_spd)
 
-            s_hrs = [h for h in hrs[start_idx : i + 1] if h and h > 30] if hrs else []
+            s_hrs = [h for h in hrs[start_idx : i + 1] if h is not None and h > 30] if hrs else []
             avg_hr = round(sum(s_hrs) / len(s_hrs)) if s_hrs else ""
             max_hr = max(s_hrs) if s_hrs else ""
 
-            s_cads = [c for c in cads[start_idx : i + 1] if c and c > 0] if cads else []
+            s_cads = [c for c in cads[start_idx : i + 1] if c is not None and c > 0] if cads else []
             avg_cad = round(sum(s_cads) / len(s_cads), 1) if s_cads else ""
 
             gain = 0.0
             loss = 0.0
             if alts and len(alts) >= i + 1:
                 for j in range(start_idx, i):
-                    diff = alts[j + 1] - alts[j]
-                    if diff > 0:
-                        gain += diff
-                    elif diff < 0:
-                        loss += abs(diff)
+                    if alts[j + 1] is not None and alts[j] is not None:
+                        diff = alts[j + 1] - alts[j]
+                        if diff > 0:
+                            gain += diff
+                        elif diff < 0:
+                            loss += abs(diff)
 
             # GAP calculation based on running metabolic energy cost (Minetti model)
             gap = ""
@@ -521,8 +522,8 @@ def compute_decoupling(streams: dict) -> float | None:
         return None
     mid_i = start_i + (end_i - start_i) // 2
 
-    h1_pairs = [(s, h) for s, h in zip(speeds[start_i:mid_i], hrs[start_i:mid_i]) if s and s > 0.5 and h and h > 40]
-    h2_pairs = [(s, h) for s, h in zip(speeds[mid_i:end_i], hrs[mid_i:end_i]) if s and s > 0.5 and h and h > 40]
+    h1_pairs = [(s, h) for s, h in zip(speeds[start_i:mid_i], hrs[start_i:mid_i]) if s is not None and s > 0.5 and h is not None and h > 40]
+    h2_pairs = [(s, h) for s, h in zip(speeds[mid_i:end_i], hrs[mid_i:end_i]) if s is not None and s > 0.5 and h is not None and h > 40]
 
     if not h1_pairs or not h2_pairs:
         return None
@@ -648,6 +649,11 @@ def merge_csv(existing_path: Path, new_rows: list[dict], columns: list[str], key
     """Merge new rows into an existing CSV, deduplicating safely."""
     if existing_path.exists():
         existing_df = pd.read_csv(existing_path, dtype=str)
+        # If updating splits by activity_id, clear old splits for the activities being updated
+        if secondary_key and key == "activity_id" and new_rows:
+            new_act_ids = set(r.get("activity_id") for r in new_rows if r.get("activity_id"))
+            if new_act_ids and "activity_id" in existing_df.columns:
+                existing_df = existing_df[~existing_df["activity_id"].isin(new_act_ids)]
     else:
         existing_df = pd.DataFrame(columns=columns)
 
@@ -970,17 +976,22 @@ def main():
             # Extract in-run splits (auto 1km splits if streams available, else fallback)
             act_splits = []
             if streams and "distance" in streams and "time" in streams:
-                act_meta = {
-                    "date": act_date,
-                    "id": act_id,
-                    "name": detail.get("name", ""),
-                    "type": act_type,
-                }
-                act_splits = compute_1km_splits(streams, act_meta)
-                if not detail.get("decoupling"):
-                    computed_dec = compute_decoupling(streams)
-                    if computed_dec is not None:
-                        detail["decoupling_computed"] = computed_dec
+                try:
+                    act_meta = {
+                        "date": act_date,
+                        "id": act_id,
+                        "name": detail.get("name", ""),
+                        "type": act_type,
+                    }
+                    act_splits = compute_1km_splits(streams, act_meta)
+                    log.info(f"  Generated {len(act_splits)} auto 1km splits for {act_id} ({act_date})")
+                    if not detail.get("decoupling"):
+                        computed_dec = compute_decoupling(streams)
+                        if computed_dec is not None:
+                            detail["decoupling_computed"] = computed_dec
+                except Exception as e:
+                    log.warning(f"Error computing 1km splits for {act_id}: {e}")
+                    act_splits = []
 
             # If streams didn't yield splits (e.g. treadmill or short), fallback to recorded laps
             if not act_splits:
