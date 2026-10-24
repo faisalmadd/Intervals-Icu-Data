@@ -2,12 +2,13 @@
 
 | Field | Value |
 |-------|-------|
-| **Last Sync** | 2026-10-24 14:06:11 UTC |
+| **Last Sync** | 2026-10-24 15:02:41 UTC |
 | **Mode** | Full Backfill |
-| **Duration** | 54.0s |
+| **Duration** | 56.9s |
 | **Activities Fetched** | 26 |
-| **Files Uploaded to Drive** | 26 |
-| **Files Skipped** | 0 |
+| **Splits / Laps Extracted** | 0 |
+| **Files Uploaded to Drive** | 0 |
+| **Files Skipped (already in Drive)** | 26 |
 | **Wellness Records** | 64 |
 | **Status** | ✅ Success |
 
