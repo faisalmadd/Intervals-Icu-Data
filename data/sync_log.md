@@ -2,14 +2,12 @@
 
 | Field | Value |
 |-------|-------|
-| **Last Sync** | 2026-10-24 14:03:55 UTC |
+| **Last Sync** | 2026-10-24 14:06:11 UTC |
 | **Mode** | Full Backfill |
-| **Duration** | 13.0s |
+| **Duration** | 54.0s |
 | **Activities Fetched** | 26 |
-| **Files Uploaded to Drive** | 0 |
-| **Files Skipped** | 26 |
+| **Files Uploaded to Drive** | 26 |
+| **Files Skipped** | 0 |
 | **Wellness Records** | 64 |
-| **Status** | ⚠️ Completed with warnings |
+| **Status** | ✅ Success |
 
-## Notes & Warnings
-- `GDrive CSV: ('invalid_scope: Bad Request', {'error': 'invalid_scope', 'error_description': 'Bad Request'})`
