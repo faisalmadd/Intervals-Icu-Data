@@ -18,7 +18,7 @@
 ## HRV & Recovery
 | Metric | 7-day Avg | 60-day Baseline | Status |
 |--------|-----------|-----------------|--------|
-| HRV (rMSSD) | — ms | 106.5 ms | ✅ Below baseline |
+| HRV (rMSSD) | — ms | — ms | ✅ Below baseline |
 | Resting HR | 54 bpm | 53 bpm | ✅ Stable |
 | Sleep (avg) | — hr | — | — |
 
@@ -33,38 +33,38 @@
 
 ## 📊 In-Run Detailed Stats (Recent Runs)
 
-### 🏃 Evening Run — 2026-09-04
-- **Summary**: 0.1 km in 1.1 min | Avg Pace: **12:45/km** (GAP: **10:19/km**)
-- **Heart Rate**: Avg **0 bpm** | Max **0 bpm** | HR Recovery (HRRc): **— bpm drop**
-- **Elevation**: +0.0 m / -1.2363358 m (Vert Density: **— m/km**) | Cadence: **66.92727 spm**
-- **Heart Rate Zones**: —
+### 🏃 Evening Run — 2026-10-24
+- **Pacing**: 3.63 km in 30.2 min | Avg Pace: **8:19/km** (GAP: **7:32/km**)
+- **Cardiovascular**: Avg HR: **138 bpm** | Max HR: **149 bpm** | HR Recovery: **— bpm drop** | Decoupling: **—%**
+- **Terrain & Vert**: Elevation Gain: **+81.72812 m** | Loss: **-81.769 m** (Vert Density: **22.5 m/km**) | Cadence: **78.75263 spm**
+- **Heart Rate Zones**: **Z1**: 8.5m (28%) | **Z2**: 20.0m (67%) | **Z3**: 1.5m (5%)
 
 **Kilometer / Lap Splits**:
 | Split | Distance | Time | Pace | Avg HR | Vert |
 |:---|:---|:---|:---|:---|:---|
-*No split data recorded*
+| Split 1 | 3.63 km | 30.22 min | 8:19/km | 138 bpm | +41.4 m |
 
-### 🏃 Evening Run — 2026-09-04
-- **Summary**: 3.02 km in 30.6 min | Avg Pace: **10:10/km** (GAP: **10:05/km**)
-- **Heart Rate**: Avg **151 bpm** | Max **167 bpm** | HR Recovery (HRRc): **— bpm drop**
-- **Elevation**: +20.807983 m / -17.384987 m (Vert Density: **6.9 m/km**) | Cadence: **56.8218 spm**
-- **Heart Rate Zones**: **Z1**: 1.2m (4%) | **Z2**: 2.9m (10%) | **Z3**: 13.5m (45%) | **Z4**: 12.0m (40%) | **Z5**: 0.6m (2%)
-
-**Kilometer / Lap Splits**:
-| Split | Distance | Time | Pace | Avg HR | Vert |
-|:---|:---|:---|:---|:---|:---|
-*No split data recorded*
-
-### 🏃 Evening Run — 2026-09-05
-- **Summary**: 1.7 km in 11.6 min | Avg Pace: **6:53/km** (GAP: **7:00/km**)
-- **Heart Rate**: Avg **158 bpm** | Max **180 bpm** | HR Recovery (HRRc): **— bpm drop**
-- **Elevation**: +16.794888 m / -31.347599 m (Vert Density: **9.9 m/km**) | Cadence: **71.24133 spm**
-- **Heart Rate Zones**: **Z1**: 1.6m (14%) | **Z2**: 0.6m (5%) | **Z3**: 1.5m (13%) | **Z4**: 0.9m (8%) | **Z5**: 0.7m (6%)
+### 🏃 Evening Run — 2026-10-23
+- **Pacing**: 3.59 km in 28.1 min | Avg Pace: **7:50/km** (GAP: **7:09/km**)
+- **Cardiovascular**: Avg HR: **146 bpm** | Max HR: **180 bpm** | HR Recovery: **— bpm drop** | Decoupling: **—%**
+- **Terrain & Vert**: Elevation Gain: **+79.08563 m** | Loss: **-79.95726 m** (Vert Density: **22.0 m/km**) | Cadence: **73.083336 spm**
+- **Heart Rate Zones**: **Z1**: 7.2m (26%) | **Z2**: 9.2m (33%) | **Z3**: 5.6m (20%) | **Z4**: 2.0m (7%) | **Z5**: 1.1m (4%)
 
 **Kilometer / Lap Splits**:
 | Split | Distance | Time | Pace | Avg HR | Vert |
 |:---|:---|:---|:---|:---|:---|
-*No split data recorded*
+| Split 1 | 3.59 km | 28.17 min | 7:50/km | 145 bpm | +44.600006 m |
+
+### 🏃 Night Run — 2026-10-21
+- **Pacing**: 5.01 km in 43.4 min | Avg Pace: **8:40/km** (GAP: **7:45/km**)
+- **Cardiovascular**: Avg HR: **140 bpm** | Max HR: **151 bpm** | HR Recovery: **— bpm drop** | Decoupling: **—%**
+- **Terrain & Vert**: Elevation Gain: **+116.083176 m** | Loss: **-116.04611 m** (Vert Density: **23.2 m/km**) | Cadence: **78.17244 spm**
+- **Heart Rate Zones**: **Z1**: 6.1m (14%) | **Z2**: 33.6m (78%) | **Z3**: 3.7m (8%)
+
+**Kilometer / Lap Splits**:
+| Split | Distance | Time | Pace | Avg HR | Vert |
+|:---|:---|:---|:---|:---|:---|
+| Split 1 | 5.01 km | 43.47 min | 8:40/km | 140 bpm | +63.840004 m |
 
 
 ## Coaching Flags

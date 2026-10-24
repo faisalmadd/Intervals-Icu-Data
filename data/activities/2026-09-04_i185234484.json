@@ -201,5 +201,7 @@
   "average_stride": 0.6657798,
   "icu_average_watts": null,
   "icu_variability_index": null,
-  "strain_score": null
+  "strain_score": null,
+  "icu_intervals": null,
+  "icu_groups": null
 }
