@@ -3,8 +3,8 @@
 Intervals.icu → Google Drive + Git Sync Engine
 
 Fetches all activities and wellness data from Intervals.icu,
-uploads raw .fit.gz files and CSVs to Google Drive, and
-generates local CSV/MD files for Git commit.
+generates structured CSVs and training status snapshot for Git,
+and uploads raw .fit.gz files and CSVs to Google Drive.
 """
 
 import os
@@ -29,7 +29,11 @@ INTERVALS_API_KEY = os.environ.get("INTERVALS_API_KEY") or os.environ.get("INTER
 INTERVALS_ATHLETE_ID = os.environ.get("INTERVALS_ATHLETE_ID") or os.environ.get("ATHLETE_ID", "0")
 
 GDRIVE_SA_KEY_JSON = os.environ.get("GDRIVE_SERVICE_ACCOUNT_KEY")
+GDRIVE_REFRESH_TOKEN = os.environ.get("GDRIVE_REFRESH_TOKEN")
+GDRIVE_CLIENT_ID = os.environ.get("GDRIVE_CLIENT_ID")
+GDRIVE_CLIENT_SECRET = os.environ.get("GDRIVE_CLIENT_SECRET")
 GDRIVE_FOLDER_ID = os.environ.get("GDRIVE_FOLDER_ID")
+
 FULL_BACKFILL = os.environ.get("FULL_BACKFILL", "false").lower() == "true"
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -119,27 +123,51 @@ class IntervalsClient:
 
 
 # ---------------------------------------------------------------------------
-# Google Drive Client
+# Google Drive Client (Supports OAuth 2.0 and Service Account)
 # ---------------------------------------------------------------------------
 
 
 class GDriveClient:
-    """Manages uploads to a specific Google Drive folder."""
+    """Manages uploads to Google Drive with deduplication and error handling."""
 
-    SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+    SCOPES = ["https://www.googleapis.com/auth/drive.file", "https://www.googleapis.com/auth/drive"]
 
-    def __init__(self, sa_key_json: str, root_folder_id: str):
-        from google.oauth2 import service_account
+    def __init__(
+        self,
+        root_folder_id: str,
+        sa_key_json: str | None = None,
+        oauth_token: str | None = None,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+    ):
         from googleapiclient.discovery import build
 
-        creds_dict = json.loads(sa_key_json)
-        creds = service_account.Credentials.from_service_account_info(
-            creds_dict, scopes=self.SCOPES
-        )
+        if oauth_token and client_id:
+            from google.oauth2.credentials import Credentials
+
+            creds = Credentials(
+                None,
+                refresh_token=oauth_token,
+                token_uri="https://oauth2.googleapis.com/token",
+                client_id=client_id,
+                client_secret=client_secret,
+                scopes=self.SCOPES,
+            )
+            log.info("Google Drive initialized using OAuth 2.0 User Token (Personal Storage Quota)")
+        elif sa_key_json:
+            from google.oauth2 import service_account
+
+            creds_dict = json.loads(sa_key_json)
+            creds = service_account.Credentials.from_service_account_info(
+                creds_dict, scopes=self.SCOPES
+            )
+            log.info("Google Drive initialized using Service Account")
+        else:
+            raise ValueError("No Google Drive credentials provided.")
+
         self.service = build("drive", "v3", credentials=creds, cache_discovery=False)
         self.root_folder_id = root_folder_id
         self._folder_cache: dict[str, str] = {}
-        log.info("Google Drive client initialized")
 
     def _ensure_folder(self, name: str, parent_id: str) -> str:
         """Create a folder if it doesn't exist, return its ID."""
@@ -153,7 +181,7 @@ class GDriveClient:
         )
         results = (
             self.service.files()
-            .list(q=query, spaces="drive", fields="files(id, name)")
+            .list(q=query, spaces="drive", fields="files(id, name)", supportsAllDrives=True, includeItemsFromAllDrives=True)
             .execute()
         )
         files = results.get("files", [])
@@ -165,7 +193,11 @@ class GDriveClient:
                 "mimeType": "application/vnd.google-apps.folder",
                 "parents": [parent_id],
             }
-            folder = self.service.files().create(body=metadata, fields="id").execute()
+            folder = (
+                self.service.files()
+                .create(body=metadata, fields="id", supportsAllDrives=True)
+                .execute()
+            )
             folder_id = folder["id"]
             log.info(f"  Created Drive folder: {name}")
 
@@ -183,7 +215,7 @@ class GDriveClient:
         query = f"name='{name}' and '{parent_id}' in parents and trashed=false"
         results = (
             self.service.files()
-            .list(q=query, spaces="drive", fields="files(id)")
+            .list(q=query, spaces="drive", fields="files(id)", supportsAllDrives=True, includeItemsFromAllDrives=True)
             .execute()
         )
         return len(results.get("files", [])) > 0
@@ -191,14 +223,14 @@ class GDriveClient:
     def upload_bytes(
         self, name: str, data: bytes, parent_id: str, mime_type: str = "application/octet-stream"
     ) -> str:
-        """Upload a file (bytes) to a Drive folder. Returns file ID."""
+        """Upload a file (bytes) to a Drive folder."""
         from googleapiclient.http import MediaInMemoryUpload
 
         media = MediaInMemoryUpload(data, mimetype=mime_type)
         metadata = {"name": name, "parents": [parent_id]}
         f = (
             self.service.files()
-            .create(body=metadata, media_body=media, fields="id")
+            .create(body=metadata, media_body=media, fields="id", supportsAllDrives=True)
             .execute()
         )
         return f["id"]
@@ -212,7 +244,7 @@ class GDriveClient:
         query = f"name='{name}' and '{parent_id}' in parents and trashed=false"
         results = (
             self.service.files()
-            .list(q=query, spaces="drive", fields="files(id)")
+            .list(q=query, spaces="drive", fields="files(id)", supportsAllDrives=True, includeItemsFromAllDrives=True)
             .execute()
         )
         existing = results.get("files", [])
@@ -221,21 +253,21 @@ class GDriveClient:
         if existing:
             file_id = existing[0]["id"]
             self.service.files().update(
-                fileId=file_id, media_body=media
+                fileId=file_id, media_body=media, supportsAllDrives=True
             ).execute()
             return file_id
         else:
             metadata = {"name": name, "parents": [parent_id]}
             f = (
                 self.service.files()
-                .create(body=metadata, media_body=media, fields="id")
+                .create(body=metadata, media_body=media, fields="id", supportsAllDrives=True)
                 .execute()
             )
             return f["id"]
 
 
 # ---------------------------------------------------------------------------
-# CSV Schemas & Data Transformations
+# CSV Schemas & Transformations
 # ---------------------------------------------------------------------------
 
 ACTIVITY_COLUMNS = [
@@ -399,7 +431,7 @@ def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFr
     well_7 = window(wellness_df, 7)
     well_60 = window(wellness_df, 60)
     hrv_7_avg = well_7["hrv_rmssd"].mean() if "hrv_rmssd" in well_7.columns else float("nan")
-    hrv_60_avg = well_60["hrv_rmssd"].mean() if "hrv_60_avg" in well_60.columns else float("nan")
+    hrv_60_avg = well_60["hrv_rmssd"].mean() if "hrv_rmssd" in well_60.columns else float("nan")
     rhr_7_avg = well_7["resting_hr"].mean() if "resting_hr" in well_7.columns else float("nan")
     rhr_60_avg = well_60["resting_hr"].mean() if "resting_hr" in well_60.columns else float("nan")
     sleep_7_avg = well_7["sleep_duration_hr"].mean() if "sleep_duration_hr" in well_7.columns else float("nan")
@@ -519,26 +551,51 @@ def main():
             oldest = (datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)).strftime("%Y-%m-%d")
             log.info(f"=== INCREMENTAL SYNC (last {LOOKBACK_DAYS} days) ===")
 
-        # Initialize Intervals Client
+        # 1. Fetch activities and wellness records from Intervals.icu
         icu = IntervalsClient(INTERVALS_API_KEY, INTERVALS_ATHLETE_ID)
-
-        # Initialize Google Drive Client (optional if not yet configured)
-        gdrive = None
-        if GDRIVE_SA_KEY_JSON and GDRIVE_FOLDER_ID:
-            try:
-                gdrive = GDriveClient(GDRIVE_SA_KEY_JSON, GDRIVE_FOLDER_ID)
-            except Exception as e:
-                log.warning(f"Google Drive initialization failed: {e}. Proceeding with local Git sync.")
-                errors.append(f"GDrive init: {e}")
-        else:
-            log.info("Google Drive secrets not set. Skipping Drive upload (local CSVs will still update).")
-
-        # Fetch activities from Intervals.icu
         activities = icu.get_activities(oldest, newest)
         stats["activities_fetched"] = len(activities)
 
-        # Upload .fit.gz files to Google Drive (if enabled)
+        wellness = icu.get_wellness(oldest, newest)
+        stats["wellness_records"] = len(wellness)
+
+        # 2. Build and save CSV files locally FIRST (guarantees Git data is updated)
+        activity_rows = [activity_to_row(a) for a in activities]
+        wellness_rows = [wellness_to_row(w) for w in wellness]
+
+        activities_df = merge_csv(ACTIVITIES_CSV, activity_rows, ACTIVITY_COLUMNS, key="activity_id")
+        wellness_df = merge_csv(WELLNESS_CSV, wellness_rows, WELLNESS_COLUMNS, key="date")
+
+        activities_df.to_csv(ACTIVITIES_CSV, index=False)
+        wellness_df.to_csv(WELLNESS_CSV, index=False)
+        log.info(f"Saved {len(activities_df)} activities and {len(wellness_df)} wellness records to CSV.")
+
+        # 3. Generate training_status.md locally
+        status_md = generate_training_status(activities_df.copy(), wellness_df.copy())
+        status_path = DATA_DIR / "training_status.md"
+        status_path.write_text(status_md, encoding="utf-8")
+        log.info("Generated local training_status.md.")
+
+        # 4. Initialize Google Drive Client (if configured)
+        gdrive = None
+        if GDRIVE_FOLDER_ID and (GDRIVE_REFRESH_TOKEN or GDRIVE_SA_KEY_JSON):
+            try:
+                gdrive = GDriveClient(
+                    root_folder_id=GDRIVE_FOLDER_ID,
+                    sa_key_json=GDRIVE_SA_KEY_JSON,
+                    oauth_token=GDRIVE_REFRESH_TOKEN,
+                    client_id=GDRIVE_CLIENT_ID,
+                    client_secret=GDRIVE_CLIENT_SECRET,
+                )
+            except Exception as e:
+                log.warning(f"Google Drive initialization error: {e}")
+                errors.append(f"GDrive Init: {e}")
+        else:
+            log.info("Google Drive secrets not configured. Skipping Drive upload.")
+
+        # 5. Upload files to Google Drive (with individual error protection)
         if gdrive:
+            # Upload .fit.gz files
             for act in activities:
                 act_id = act.get("id", "")
                 act_date = (act.get("start_date_local") or act.get("startDateLocal", ""))[:10]
@@ -546,71 +603,49 @@ def main():
                     continue
 
                 year = int(act_date[:4])
-                year_folder = gdrive.ensure_year_folder(year)
+                try:
+                    year_folder = gdrive.ensure_year_folder(year)
+                    filename = f"{act_date}_{act_id}.fit.gz"
+                    if gdrive.file_exists(filename, year_folder):
+                        stats["files_skipped"] += 1
+                        continue
 
-                filename = f"{act_date}_{act_id}.fit.gz"
-                if gdrive.file_exists(filename, year_folder):
-                    stats["files_skipped"] += 1
-                    continue
-
-                file_data = icu.download_activity_file(act_id)
-                if file_data:
-                    gdrive.upload_bytes(filename, file_data, year_folder)
-                    stats["files_uploaded"] += 1
-                    log.info(f"  Uploaded to Drive: {filename}")
-                else:
-                    stats["files_skipped"] += 1
+                    file_data = icu.download_activity_file(act_id)
+                    if file_data:
+                        gdrive.upload_bytes(filename, file_data, year_folder)
+                        stats["files_uploaded"] += 1
+                        log.info(f"  Uploaded to Drive: {filename}")
+                    else:
+                        stats["files_skipped"] += 1
+                except Exception as e:
+                    err_msg = str(e)
+                    if "storageQuotaExceeded" in err_msg or "Service Accounts do not have storage quota" in err_msg:
+                        log.warning(
+                            "Google Drive upload skipped: Service Accounts cannot own files in personal Google Drive folders "
+                            "(requires a Google Workspace Shared Drive or OAuth2 user token). "
+                            "Local Git mirror will proceed normally."
+                        )
+                        errors.append("GDrive: Personal @gmail.com folders require OAuth2 token or Shared Drive (0-byte SA quota).")
+                        break
+                    else:
+                        log.warning(f"  File upload failed for {act_id}: {e}")
+                        stats["files_skipped"] += 1
 
                 time.sleep(0.4)
 
-        # Fetch wellness records
-        wellness = icu.get_wellness(oldest, newest)
-        stats["wellness_records"] = len(wellness)
-
-        # Build / merge CSV data
-        activity_rows = [activity_to_row(a) for a in activities]
-        wellness_rows = [wellness_to_row(w) for w in wellness]
-
-        activities_df = merge_csv(ACTIVITIES_CSV, activity_rows, ACTIVITY_COLUMNS, key="activity_id")
-        wellness_df = merge_csv(WELLNESS_CSV, wellness_rows, WELLNESS_COLUMNS, key="date")
-
-        # Save to local Git repository
-        activities_df.to_csv(ACTIVITIES_CSV, index=False)
-        wellness_df.to_csv(WELLNESS_CSV, index=False)
-        log.info(f"Saved {len(activities_df)} activities and {len(wellness_df)} wellness records to CSV.")
-
-        # Upload updated CSVs to Google Drive
-        if gdrive:
-            gdrive.upload_or_update(
-                "activities.csv",
-                ACTIVITIES_CSV.read_bytes(),
-                GDRIVE_FOLDER_ID,
-                "text/csv",
-            )
-            gdrive.upload_or_update(
-                "wellness.csv",
-                WELLNESS_CSV.read_bytes(),
-                GDRIVE_FOLDER_ID,
-                "text/csv",
-            )
-            log.info("Uploaded updated CSVs to Google Drive.")
-
-        # Generate training_status.md
-        status_md = generate_training_status(activities_df.copy(), wellness_df.copy())
-        status_path = DATA_DIR / "training_status.md"
-        status_path.write_text(status_md, encoding="utf-8")
-
-        if gdrive:
-            gdrive.upload_or_update(
-                "training_status.md",
-                status_md.encode("utf-8"),
-                GDRIVE_FOLDER_ID,
-                "text/markdown",
-            )
-            log.info("Uploaded training_status.md to Google Drive.")
+            # Upload CSVs & status to Google Drive
+            try:
+                gdrive.upload_or_update("activities.csv", ACTIVITIES_CSV.read_bytes(), GDRIVE_FOLDER_ID, "text/csv")
+                gdrive.upload_or_update("wellness.csv", WELLNESS_CSV.read_bytes(), GDRIVE_FOLDER_ID, "text/csv")
+                gdrive.upload_or_update("training_status.md", status_md.encode("utf-8"), GDRIVE_FOLDER_ID, "text/markdown")
+                log.info("Uploaded CSVs and training_status.md to Google Drive.")
+            except Exception as e:
+                log.warning(f"Could not upload CSVs to Google Drive: {e}")
+                if "storageQuotaExceeded" not in str(e):
+                    errors.append(f"GDrive CSV: {e}")
 
     except Exception as e:
-        log.error(f"SYNC ERROR: {e}", exc_info=True)
+        log.error(f"SYNC FATAL ERROR: {e}", exc_info=True)
         errors.append(str(e))
 
     # Write sync log
@@ -624,20 +659,21 @@ def main():
 | **Duration** | {elapsed}s |
 | **Activities Fetched** | {stats['activities_fetched']} |
 | **Files Uploaded to Drive** | {stats['files_uploaded']} |
-| **Files Skipped (already in Drive)** | {stats['files_skipped']} |
+| **Files Skipped** | {stats['files_skipped']} |
 | **Wellness Records** | {stats['wellness_records']} |
-| **Status** | {'✅ Success' if not errors else '⚠️ Completed with errors'} |
+| **Status** | {'✅ Success' if not errors else '⚠️ Completed with warnings'} |
 
 """
     if errors:
-        sync_log += "## Errors\n"
+        sync_log += "## Notes & Warnings\n"
         for err in errors:
             sync_log += f"- `{err}`\n"
 
     SYNC_LOG.write_text(sync_log, encoding="utf-8")
     log.info(f"Sync complete in {elapsed}s.")
 
-    if errors:
+    # Only exit with error if core data extraction itself failed
+    if stats["activities_fetched"] == 0 and stats["wellness_records"] == 0 and errors:
         sys.exit(1)
 
 
