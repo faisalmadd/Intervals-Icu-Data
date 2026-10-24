@@ -415,10 +415,24 @@ def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFr
     run_types = activities_df["type"].str.lower().str.contains("run|trail|hike|walk", na=False)
     running = activities_df[run_types].copy()
 
-    today_dt = pd.Timestamp.now(tz="UTC").normalize()
+    today_dt = pd.to_datetime(today)
     activities_df["_date"] = pd.to_datetime(activities_df["date"], errors="coerce")
     running["_date"] = pd.to_datetime(running["date"], errors="coerce")
     wellness_df["_date"] = pd.to_datetime(wellness_df["date"], errors="coerce")
+
+    # Guarantee tz-naive compatibility for comparisons
+    try:
+        activities_df["_date"] = activities_df["_date"].dt.tz_localize(None)
+    except (TypeError, AttributeError):
+        pass
+    try:
+        running["_date"] = running["_date"].dt.tz_localize(None)
+    except (TypeError, AttributeError):
+        pass
+    try:
+        wellness_df["_date"] = wellness_df["_date"].dt.tz_localize(None)
+    except (TypeError, AttributeError):
+        pass
 
     def window(df, days):
         cutoff = today_dt - pd.Timedelta(days=days)
