@@ -84,8 +84,8 @@ class IntervalsClient:
         return activities
 
     def get_activity_detail(self, activity_id: str) -> dict:
-        """Fetch a single activity with full interval details."""
-        url = f"{self.base}/activity/{activity_id}"
+        """Fetch a single activity with full interval & lap details."""
+        url = f"{self.base}/activity/{activity_id}?intervals=true"
         resp = self.session.get(url, timeout=60)
         resp.raise_for_status()
         return resp.json()
@@ -314,11 +314,14 @@ def _extract_laps_json(activity: dict) -> str:
         return ""
     simplified = []
     for i, lap in enumerate(laps, 1):
+        dist_m = lap.get("distance") or 0
+        dur_s = lap.get("moving_time") or lap.get("elapsed_time") or lap.get("duration_secs", 0)
+        speed = lap.get("average_speed") or (dist_m / dur_s if dur_s and dist_m else None)
         simplified.append({
             "lap": i,
-            "dist_km": round((lap.get("distance", 0) or 0) / 1000, 2),
-            "dur_s": lap.get("moving_time") or lap.get("elapsed_time") or lap.get("duration_secs", 0),
-            "pace": _seconds_to_pace(lap.get("average_speed")),
+            "dist_km": round(dist_m / 1000, 2),
+            "dur_s": dur_s,
+            "pace": _seconds_to_pace(speed),
             "hr": lap.get("average_heartrate") or lap.get("avg_hr"),
             "elev_gain": lap.get("total_elevation_gain") or lap.get("elevation_gain"),
             "cadence": lap.get("average_cadence") or lap.get("avg_cadence"),
@@ -339,7 +342,7 @@ def extract_splits(activity: dict) -> list[dict]:
     for i, lap in enumerate(laps, 1):
         dist_m = lap.get("distance") or 0
         dur_s = lap.get("moving_time") or lap.get("elapsed_time") or lap.get("duration_secs", 0)
-        speed = lap.get("average_speed")
+        speed = lap.get("average_speed") or (dist_m / dur_s if dur_s and dist_m else None)
         gap = lap.get("gap") or lap.get("icu_average_gap")
 
         split_rows.append({
@@ -490,7 +493,7 @@ def merge_csv(existing_path: Path, new_rows: list[dict], columns: list[str], key
 # ---------------------------------------------------------------------------
 
 
-def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFrame, recent_activities_raw: list[dict]) -> str:
+def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFrame, detailed_activities_raw: list[dict]) -> str:
     """Generate training_status.md tailored for running, trail running, and hiking with in-run detailed stats."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
@@ -538,7 +541,7 @@ def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFr
     well_7 = window(wellness_df, 7)
     well_60 = window(wellness_df, 60)
     hrv_7_avg = well_7["hrv_rmssd"].mean() if "hrv_rmssd" in well_7.columns else float("nan")
-    hrv_60_avg = well_60["hrv_rmssd"].mean() if "hrv_rmssd" in well_60.columns else float("nan")
+    hrv_60_avg = well_60["hrv_rmssd"].mean() if "hrv_60_avg" in well_60.columns else float("nan")
     rhr_7_avg = well_7["resting_hr"].mean() if "resting_hr" in well_7.columns else float("nan")
     rhr_60_avg = well_60["resting_hr"].mean() if "resting_hr" in well_60.columns else float("nan")
     sleep_7_avg = well_7["sleep_duration_hr"].mean() if "sleep_duration_hr" in well_7.columns else float("nan")
@@ -581,10 +584,15 @@ def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFr
             f"{_fmt(row.get('tss'))} |"
         )
 
-    # In-Run Detailed Breakdown for the latest running activities
+    # Sort detailed activities descending (newest first)
+    sorted_runs = sorted(
+        [a for a in detailed_activities_raw if "run" in (a.get("type") or "").lower() or "trail" in (a.get("type") or "").lower()],
+        key=lambda x: str(x.get("start_date_local") or x.get("startDateLocal", "")),
+        reverse=True,
+    )
+
     detailed_runs_md = []
-    recent_runs = [a for a in recent_activities_raw if "run" in (a.get("type") or "").lower() or "trail" in (a.get("type") or "").lower()]
-    for act in recent_runs[-3:][::-1]:
+    for act in sorted_runs[:3]:
         act_name = act.get("name", "Run")
         act_date = (act.get("start_date_local") or act.get("startDateLocal", ""))[:10]
         dist_km = round((act.get("distance") or 0) / 1000, 2)
@@ -598,6 +606,7 @@ def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFr
         vert_density = round(float(gain) / dist_km, 1) if dist_km and gain and gain != "—" else "—"
         hrrc = act.get("hrrc") or act.get("hr_recovery") or "—"
         cadence = act.get("average_cadence", "—")
+        decoupling = act.get("decoupling")
 
         # HR Zones
         hr_zones = act.get("icu_hr_zone_times") or []
@@ -611,19 +620,22 @@ def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFr
         laps = act.get("laps") or act.get("icu_laps") or act.get("icu_intervals") or []
         split_table = []
         for i, lap in enumerate(laps, 1):
-            l_dist = round((lap.get("distance", 0) or 0) / 1000, 2)
-            l_dur = round((lap.get("moving_time") or lap.get("elapsed_time") or lap.get("duration_secs", 0)) / 60, 2)
-            l_pace = _seconds_to_pace(lap.get("average_speed"))
+            l_dist_m = lap.get("distance") or 0
+            l_dist = round(l_dist_m / 1000, 2)
+            l_dur_s = lap.get("moving_time") or lap.get("elapsed_time") or lap.get("duration_secs", 0)
+            l_dur = round(l_dur_s / 60, 2)
+            l_speed = lap.get("average_speed") or (l_dist_m / l_dur_s if l_dur_s and l_dist_m else None)
+            l_pace = _seconds_to_pace(l_speed)
             l_hr = lap.get("average_heartrate") or lap.get("avg_hr", "—")
             l_gain = lap.get("total_elevation_gain") or lap.get("elevation_gain", 0)
             split_table.append(f"| Split {i} | {l_dist} km | {l_dur} min | {l_pace}/km | {l_hr} bpm | +{l_gain} m |")
 
-        splits_rendered = "\n".join(split_table) if split_table else "*No split data recorded*"
+        splits_rendered = "\n".join(split_table) if split_table else "*Continuous single-lap session*"
 
         detailed_runs_md.append(f"""### 🏃 {act_name} — {act_date}
-- **Summary**: {dist_km} km in {dur_min} min | Avg Pace: **{avg_pace}/km** (GAP: **{gap}/km**)
-- **Heart Rate**: Avg **{avg_hr} bpm** | Max **{max_hr} bpm** | HR Recovery (HRRc): **{hrrc} bpm drop**
-- **Elevation**: +{gain} m / -{loss} m (Vert Density: **{vert_density} m/km**) | Cadence: **{cadence} spm**
+- **Pacing**: {dist_km} km in {dur_min} min | Avg Pace: **{avg_pace}/km** (GAP: **{gap}/km**)
+- **Cardiovascular**: Avg HR: **{avg_hr} bpm** | Max HR: **{max_hr} bpm** | HR Recovery: **{hrrc} bpm drop** | Decoupling: **{decoupling if decoupling is not None else '—'}%**
+- **Terrain & Vert**: Elevation Gain: **+{gain} m** | Loss: **-{loss} m** (Vert Density: **{vert_density} m/km**) | Cadence: **{cadence} spm**
 - **Heart Rate Zones**: {zone_str if zone_str else "—"}
 
 **Kilometer / Lap Splits**:
@@ -722,24 +734,38 @@ def main():
         wellness = icu.get_wellness(oldest, newest)
         stats["wellness_records"] = len(wellness)
 
-        # 2. Extract detailed splits & save full activity JSONs
+        # 2. Fetch full activity details (intervals=true) & extract splits
         all_splits = []
+        detailed_activities = []
         for act in activities:
             act_id = act.get("id", "")
             act_date = (act.get("start_date_local") or act.get("startDateLocal", ""))[:10]
 
+            # Fetch detailed activity with intervals=true
+            try:
+                detail = icu.get_activity_detail(act_id)
+                # merge summary fields into detail if not present
+                for k, v in act.items():
+                    if k not in detail or detail[k] is None:
+                        detail[k] = v
+            except Exception as e:
+                log.warning(f"Could not fetch activity detail for {act_id}: {e}")
+                detail = act
+
+            detailed_activities.append(detail)
+
             # Save full raw JSON for each activity
             act_json_path = ACTIVITIES_DIR / f"{act_date}_{act_id}.json"
-            act_json_path.write_text(json.dumps(act, indent=2, default=str), encoding="utf-8")
+            act_json_path.write_text(json.dumps(detail, indent=2, default=str), encoding="utf-8")
 
             # Extract in-run splits / laps
-            act_splits = extract_splits(act)
+            act_splits = extract_splits(detail)
             all_splits.extend(act_splits)
 
         stats["splits_extracted"] = len(all_splits)
 
         # 3. Build and merge CSV files locally
-        activity_rows = [activity_to_row(a) for a in activities]
+        activity_rows = [activity_to_row(a) for a in detailed_activities]
         wellness_rows = [wellness_to_row(w) for w in wellness]
 
         activities_df = merge_csv(ACTIVITIES_CSV, activity_rows, ACTIVITY_COLUMNS, key="activity_id")
@@ -752,7 +778,7 @@ def main():
         log.info(f"Saved {len(activities_df)} activities, {len(splits_df)} splits, and {len(wellness_df)} wellness records to CSV.")
 
         # 4. Generate training_status.md locally with in-run detailed stats
-        status_md = generate_training_status(activities_df.copy(), wellness_df.copy(), activities)
+        status_md = generate_training_status(activities_df.copy(), wellness_df.copy(), detailed_activities)
         status_path = DATA_DIR / "training_status.md"
         status_path.write_text(status_md, encoding="utf-8")
         log.info("Generated local training_status.md with in-run detailed stats.")
@@ -780,7 +806,7 @@ def main():
             json_drive_folder = gdrive._ensure_folder("activities_json", GDRIVE_FOLDER_ID)
 
             # Upload raw .fit.gz files and full JSONs
-            for act in activities:
+            for act in detailed_activities:
                 act_id = act.get("id", "")
                 act_date = (act.get("start_date_local") or act.get("startDateLocal", ""))[:10]
                 if not act_date:
