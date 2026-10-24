@@ -1,6 +1,7 @@
 # Credentials & secrets
 *.json
 !data/*.json
+!data/activities/*.json
 
 # Python
 __pycache__/

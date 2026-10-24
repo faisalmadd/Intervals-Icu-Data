@@ -3,8 +3,8 @@
 Intervals.icu → Google Drive + Git Sync Engine
 
 Fetches all activities and wellness data from Intervals.icu,
-generates structured CSVs and training status snapshot for Git,
-and uploads raw .fit.gz files and CSVs to Google Drive.
+generates detailed CSVs (activities.csv, splits.csv, wellness.csv),
+detailed per-activity JSON files, and comprehensive training status for Git & Google Drive.
 """
 
 import os
@@ -38,9 +38,12 @@ FULL_BACKFILL = os.environ.get("FULL_BACKFILL", "false").lower() == "true"
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+ACTIVITIES_DIR = DATA_DIR / "activities"
+ACTIVITIES_DIR.mkdir(parents=True, exist_ok=True)
 
 LOOKBACK_DAYS = 7  # For incremental daily syncs
 ACTIVITIES_CSV = DATA_DIR / "activities.csv"
+SPLITS_CSV = DATA_DIR / "splits.csv"
 WELLNESS_CSV = DATA_DIR / "wellness.csv"
 SYNC_LOG = DATA_DIR / "sync_log.md"
 
@@ -89,7 +92,6 @@ class IntervalsClient:
 
     def download_activity_file(self, activity_id: str) -> bytes | None:
         """Download the raw original or processed FIT file for an activity."""
-        # Try raw original file first
         url = f"{self.base}/activity/{activity_id}/file"
         try:
             resp = self.session.get(url, timeout=120)
@@ -98,7 +100,6 @@ class IntervalsClient:
         except requests.RequestException:
             pass
 
-        # Fallback to processed FIT file
         fallback_url = f"{self.base}/activity/{activity_id}/fit-file"
         try:
             resp = self.session.get(fallback_url, timeout=120)
@@ -272,10 +273,21 @@ class GDriveClient:
 
 ACTIVITY_COLUMNS = [
     "date", "name", "type", "distance_km", "duration_min", "elapsed_min",
-    "elevation_gain_m", "avg_hr", "max_hr", "avg_pace_min_km", "gap_min_km",
-    "avg_cadence_spm", "tss", "trimp", "hr_tss", "ctl", "atl", "tsb",
+    "elevation_gain_m", "elevation_loss_m", "elevation_per_km",
+    "avg_hr", "max_hr", "avg_pace_min_km", "gap_min_km", "max_speed_kph", "avg_speed_kph",
+    "avg_cadence_spm", "max_cadence_spm",
+    "hr_z1_min", "hr_z2_min", "hr_z3_min", "hr_z4_min", "hr_z5_min", "hr_z2_pct",
+    "hrrc", "decoupling_pct", "efficiency_factor", "calories",
+    "tss", "trimp", "hr_tss", "ctl", "atl", "tsb",
     "rpe", "feeling", "notes", "laps_json",
     "temperature_c", "humidity_pct", "wind_kph", "activity_id",
+]
+
+SPLITS_COLUMNS = [
+    "date", "activity_id", "activity_name", "activity_type",
+    "split_num", "distance_km", "duration_min", "pace_min_km", "gap_min_km",
+    "avg_hr", "max_hr", "elevation_gain_m", "elevation_loss_m",
+    "avg_cadence_spm", "split_type",
 ]
 
 WELLNESS_COLUMNS = [
@@ -297,41 +309,120 @@ def _seconds_to_pace(speed_mps: float | None) -> str:
 
 def _extract_laps_json(activity: dict) -> str:
     """Extract laps array as a compact JSON string."""
-    laps = activity.get("laps") or activity.get("icu_laps") or []
+    laps = activity.get("laps") or activity.get("icu_laps") or activity.get("icu_intervals") or []
     if not laps:
         return ""
     simplified = []
     for i, lap in enumerate(laps, 1):
         simplified.append({
             "lap": i,
-            "distance_m": round(lap.get("distance", 0), 1),
-            "duration_s": lap.get("moving_time") or lap.get("elapsed_time", 0),
-            "avg_hr": lap.get("average_heartrate"),
-            "avg_speed_mps": lap.get("average_speed"),
-            "elevation_m": lap.get("total_elevation_gain"),
+            "dist_km": round((lap.get("distance", 0) or 0) / 1000, 2),
+            "dur_s": lap.get("moving_time") or lap.get("elapsed_time") or lap.get("duration_secs", 0),
+            "pace": _seconds_to_pace(lap.get("average_speed")),
+            "hr": lap.get("average_heartrate") or lap.get("avg_hr"),
+            "elev_gain": lap.get("total_elevation_gain") or lap.get("elevation_gain"),
+            "cadence": lap.get("average_cadence") or lap.get("avg_cadence"),
         })
     return json.dumps(simplified)
 
 
+def extract_splits(activity: dict) -> list[dict]:
+    """Extract individual laps / kilometer splits from activity."""
+    act_id = activity.get("id", "")
+    act_date = (activity.get("start_date_local") or activity.get("startDateLocal", ""))[:10]
+    act_name = activity.get("name", "")
+    act_type = activity.get("type", "")
+
+    laps = activity.get("laps") or activity.get("icu_laps") or activity.get("icu_intervals") or []
+    split_rows = []
+
+    for i, lap in enumerate(laps, 1):
+        dist_m = lap.get("distance") or 0
+        dur_s = lap.get("moving_time") or lap.get("elapsed_time") or lap.get("duration_secs", 0)
+        speed = lap.get("average_speed")
+        gap = lap.get("gap") or lap.get("icu_average_gap")
+
+        split_rows.append({
+            "date": act_date,
+            "activity_id": act_id,
+            "activity_name": act_name,
+            "activity_type": act_type,
+            "split_num": i,
+            "distance_km": round(dist_m / 1000, 2) if dist_m else "",
+            "duration_min": round(dur_s / 60, 2) if dur_s else "",
+            "pace_min_km": _seconds_to_pace(speed),
+            "gap_min_km": _seconds_to_pace(gap),
+            "avg_hr": lap.get("average_heartrate") or lap.get("avg_hr", ""),
+            "max_hr": lap.get("max_heartrate") or lap.get("max_hr", ""),
+            "elevation_gain_m": lap.get("total_elevation_gain") or lap.get("elevation_gain", ""),
+            "elevation_loss_m": lap.get("total_elevation_loss") or "",
+            "avg_cadence_spm": lap.get("average_cadence") or lap.get("avg_cadence", ""),
+            "split_type": lap.get("type") or "SPLIT",
+        })
+
+    return split_rows
+
+
 def activity_to_row(a: dict) -> dict:
-    """Convert an Intervals.icu activity JSON object to a flat CSV row."""
+    """Convert an Intervals.icu activity JSON object to a comprehensive CSV row."""
     distance_m = a.get("distance") or 0
     moving_time_s = a.get("moving_time") or 0
     elapsed_time_s = a.get("elapsed_time") or 0
+
+    dist_km = round(distance_m / 1000, 2) if distance_m else 0
+    elev_gain = a.get("total_elevation_gain") or a.get("elevation_gain", "")
+    elev_loss = a.get("total_elevation_loss") or ""
+    elev_per_km = round(float(elev_gain) / dist_km, 1) if dist_km and elev_gain else ""
+
+    avg_speed_mps = a.get("average_speed") or 0
+    max_speed_mps = a.get("max_speed") or 0
+    avg_speed_kph = round(avg_speed_mps * 3.6, 1) if avg_speed_mps else ""
+    max_speed_kph = round(max_speed_mps * 3.6, 1) if max_speed_mps else ""
+
+    # Heart Rate Zones (time in seconds)
+    hr_zones = a.get("icu_hr_zone_times") or []
+    z1_s = hr_zones[0] if len(hr_zones) > 0 else 0
+    z2_s = hr_zones[1] if len(hr_zones) > 1 else 0
+    z3_s = hr_zones[2] if len(hr_zones) > 2 else 0
+    z4_s = hr_zones[3] if len(hr_zones) > 3 else 0
+    z5_s = hr_zones[4] if len(hr_zones) > 4 else 0
+    total_hr_s = sum(hr_zones) if hr_zones else 0
+
+    z1_min = round(z1_s / 60, 1) if z1_s else ""
+    z2_min = round(z2_s / 60, 1) if z2_s else ""
+    z3_min = round(z3_s / 60, 1) if z3_s else ""
+    z4_min = round(z4_s / 60, 1) if z4_s else ""
+    z5_min = round(z5_s / 60, 1) if z5_s else ""
+    z2_pct = round((z2_s / total_hr_s) * 100, 1) if total_hr_s and z2_s else ""
 
     return {
         "date": (a.get("start_date_local") or a.get("startDateLocal", ""))[:10],
         "name": a.get("name", ""),
         "type": a.get("type", ""),
-        "distance_km": round(distance_m / 1000, 2) if distance_m else "",
+        "distance_km": dist_km if dist_km else "",
         "duration_min": round(moving_time_s / 60, 1) if moving_time_s else "",
         "elapsed_min": round(elapsed_time_s / 60, 1) if elapsed_time_s else "",
-        "elevation_gain_m": a.get("total_elevation_gain") or a.get("elevation_gain", ""),
+        "elevation_gain_m": elev_gain,
+        "elevation_loss_m": elev_loss,
+        "elevation_per_km": elev_per_km,
         "avg_hr": a.get("average_heartrate", ""),
         "max_hr": a.get("max_heartrate", ""),
         "avg_pace_min_km": _seconds_to_pace(a.get("average_speed")),
         "gap_min_km": _seconds_to_pace(a.get("gap") or a.get("icu_average_gap")),
+        "max_speed_kph": max_speed_kph,
+        "avg_speed_kph": avg_speed_kph,
         "avg_cadence_spm": a.get("average_cadence", ""),
+        "max_cadence_spm": a.get("max_cadence", ""),
+        "hr_z1_min": z1_min,
+        "hr_z2_min": z2_min,
+        "hr_z3_min": z3_min,
+        "hr_z4_min": z4_min,
+        "hr_z5_min": z5_min,
+        "hr_z2_pct": z2_pct,
+        "hrrc": a.get("hrrc") or a.get("hr_recovery", ""),
+        "decoupling_pct": a.get("decoupling", ""),
+        "efficiency_factor": a.get("icu_efficiency_factor") or a.get("efficiency_factor", ""),
+        "calories": a.get("calories", ""),
         "tss": a.get("icu_training_load", ""),
         "trimp": a.get("trimp", ""),
         "hr_tss": a.get("icu_hr_training_load", ""),
@@ -371,8 +462,8 @@ def wellness_to_row(w: dict) -> dict:
     }
 
 
-def merge_csv(existing_path: Path, new_rows: list[dict], columns: list[str], key: str = "date") -> pd.DataFrame:
-    """Merge new rows into an existing CSV, deduplicating by activity_id or date."""
+def merge_csv(existing_path: Path, new_rows: list[dict], columns: list[str], key: str = "date", secondary_key: str | None = None) -> pd.DataFrame:
+    """Merge new rows into an existing CSV, deduplicating safely."""
     if existing_path.exists():
         existing_df = pd.read_csv(existing_path, dtype=str)
     else:
@@ -380,7 +471,10 @@ def merge_csv(existing_path: Path, new_rows: list[dict], columns: list[str], key
 
     new_df = pd.DataFrame(new_rows, columns=columns)
 
-    if key == "activity_id" and "activity_id" in new_df.columns:
+    if secondary_key and secondary_key in new_df.columns and key in new_df.columns:
+        combined = pd.concat([existing_df, new_df], ignore_index=True)
+        combined = combined.drop_duplicates(subset=[key, secondary_key], keep="last")
+    elif key == "activity_id" and "activity_id" in new_df.columns:
         combined = pd.concat([existing_df, new_df], ignore_index=True)
         combined = combined.drop_duplicates(subset=["activity_id"], keep="last")
     else:
@@ -396,8 +490,8 @@ def merge_csv(existing_path: Path, new_rows: list[dict], columns: list[str], key
 # ---------------------------------------------------------------------------
 
 
-def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFrame) -> str:
-    """Generate training_status.md tailored for running, trail running, and hiking."""
+def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFrame, recent_activities_raw: list[dict]) -> str:
+    """Generate training_status.md tailored for running, trail running, and hiking with in-run detailed stats."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     # Numeric conversion
@@ -420,7 +514,6 @@ def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFr
     running["_date"] = pd.to_datetime(running["date"], errors="coerce")
     wellness_df["_date"] = pd.to_datetime(wellness_df["date"], errors="coerce")
 
-    # Guarantee tz-naive compatibility for comparisons
     try:
         activities_df["_date"] = activities_df["_date"].dt.tz_localize(None)
     except (TypeError, AttributeError):
@@ -468,8 +561,6 @@ def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFr
     ctl_delta = round(ctl_now - ctl_prev, 1) if pd.notna(ctl_now) and pd.notna(ctl_prev) else "N/A"
     ctl_arrow = "↑" if isinstance(ctl_delta, (int, float)) and ctl_delta > 0 else "↓" if isinstance(ctl_delta, (int, float)) and ctl_delta < 0 else "→"
 
-    last5 = activities_df.tail(5).iloc[::-1]
-
     def _fmt(val, fmt=".0f"):
         if pd.isna(val) or val == "":
             return "—"
@@ -478,15 +569,68 @@ def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFr
         except (ValueError, TypeError):
             return str(val)
 
+    # Last 5 workouts overview
+    last5 = activities_df.tail(5).iloc[::-1]
     last5_rows = []
     for _, row in last5.iterrows():
         last5_rows.append(
             f"| {str(row.get('date', ''))[-5:]} | {row.get('type', '')} | "
-            f"{str(row.get('name', ''))[:25]} | {_fmt(row.get('distance_km'), '.1f')} km | "
+            f"{str(row.get('name', ''))[:22]} | {_fmt(row.get('distance_km'), '.1f')} km | "
             f"{_fmt(row.get('elevation_gain_m'))} m | "
             f"{row.get('avg_pace_min_km', '—')} | {_fmt(row.get('avg_hr'))} | "
-            f"{_fmt(row.get('tss'))} | {_fmt(row.get('feeling'))}/5 |"
+            f"{_fmt(row.get('tss'))} |"
         )
+
+    # In-Run Detailed Breakdown for the latest running activities
+    detailed_runs_md = []
+    recent_runs = [a for a in recent_activities_raw if "run" in (a.get("type") or "").lower() or "trail" in (a.get("type") or "").lower()]
+    for act in recent_runs[-3:][::-1]:
+        act_name = act.get("name", "Run")
+        act_date = (act.get("start_date_local") or act.get("startDateLocal", ""))[:10]
+        dist_km = round((act.get("distance") or 0) / 1000, 2)
+        dur_min = round((act.get("moving_time") or 0) / 60, 1)
+        avg_pace = _seconds_to_pace(act.get("average_speed"))
+        gap = _seconds_to_pace(act.get("gap") or act.get("icu_average_gap"))
+        avg_hr = act.get("average_heartrate", "—")
+        max_hr = act.get("max_heartrate", "—")
+        gain = act.get("total_elevation_gain", "—")
+        loss = act.get("total_elevation_loss", "—")
+        vert_density = round(float(gain) / dist_km, 1) if dist_km and gain and gain != "—" else "—"
+        hrrc = act.get("hrrc") or act.get("hr_recovery") or "—"
+        cadence = act.get("average_cadence", "—")
+
+        # HR Zones
+        hr_zones = act.get("icu_hr_zone_times") or []
+        total_z = sum(hr_zones) if hr_zones else 1
+        zone_str = " | ".join([
+            f"**Z{i+1}**: {round(s/60, 1)}m ({round(s*100/total_z)}%)"
+            for i, s in enumerate(hr_zones[:5]) if s > 0
+        ])
+
+        # Splits
+        laps = act.get("laps") or act.get("icu_laps") or act.get("icu_intervals") or []
+        split_table = []
+        for i, lap in enumerate(laps, 1):
+            l_dist = round((lap.get("distance", 0) or 0) / 1000, 2)
+            l_dur = round((lap.get("moving_time") or lap.get("elapsed_time") or lap.get("duration_secs", 0)) / 60, 2)
+            l_pace = _seconds_to_pace(lap.get("average_speed"))
+            l_hr = lap.get("average_heartrate") or lap.get("avg_hr", "—")
+            l_gain = lap.get("total_elevation_gain") or lap.get("elevation_gain", 0)
+            split_table.append(f"| Split {i} | {l_dist} km | {l_dur} min | {l_pace}/km | {l_hr} bpm | +{l_gain} m |")
+
+        splits_rendered = "\n".join(split_table) if split_table else "*No split data recorded*"
+
+        detailed_runs_md.append(f"""### 🏃 {act_name} — {act_date}
+- **Summary**: {dist_km} km in {dur_min} min | Avg Pace: **{avg_pace}/km** (GAP: **{gap}/km**)
+- **Heart Rate**: Avg **{avg_hr} bpm** | Max **{max_hr} bpm** | HR Recovery (HRRc): **{hrrc} bpm drop**
+- **Elevation**: +{gain} m / -{loss} m (Vert Density: **{vert_density} m/km**) | Cadence: **{cadence} spm**
+- **Heart Rate Zones**: {zone_str if zone_str else "—"}
+
+**Kilometer / Lap Splits**:
+| Split | Distance | Time | Pace | Avg HR | Vert |
+|:---|:---|:---|:---|:---|:---|
+{splits_rendered}
+""")
 
     tsb_val = latest_w.get("tsb", float("nan"))
     tsb_status = ""
@@ -524,10 +668,14 @@ def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFr
 | Resting HR | {_fmt(rhr_7_avg, '.0f')} bpm | {_fmt(rhr_60_avg, '.0f')} bpm | {"✅ Stable" if rhr_7_avg <= rhr_60_avg + 2 else "⚠️ Elevated"} |
 | Sleep (avg) | {_fmt(sleep_7_avg, '.1f')} hr | — | {"✅ Adequate" if pd.notna(sleep_7_avg) and sleep_7_avg >= 7 else "⚠️ Low" if pd.notna(sleep_7_avg) else "—"} |
 
-## Last 5 Workouts
-| Date | Type | Name | Dist | Vert | Pace | HR | TSS | Feel |
-|------|------|------|------|------|------|-----|-----|------|
-{chr(10).join(last5_rows) if last5_rows else "| — | — | No recent workouts | — | — | — | — | — | — |"}
+## Last 5 Workouts Overview
+| Date | Type | Name | Dist | Vert | Pace | HR | TSS |
+|:---|:---|:---|:---|:---|:---|:---|:---|
+{chr(10).join(last5_rows) if last5_rows else "| — | — | No recent workouts | — | — | — | — | — |"}
+
+## 📊 In-Run Detailed Stats (Recent Runs)
+
+{chr(10).join(detailed_runs_md) if detailed_runs_md else "*No detailed runs available*"}
 
 ## Coaching Flags
 - {acwr_icon} ACWR is {acwr} — {"within optimal training range" if acwr <= 1.3 else "approaching overload caution threshold" if acwr <= 1.5 else "injury risk spike detected"}.
@@ -550,6 +698,7 @@ def main():
         "files_uploaded": 0,
         "files_skipped": 0,
         "wellness_records": 0,
+        "splits_extracted": 0,
     }
 
     if not INTERVALS_API_KEY:
@@ -573,30 +722,48 @@ def main():
         wellness = icu.get_wellness(oldest, newest)
         stats["wellness_records"] = len(wellness)
 
-        # 2. Build and save CSV files locally FIRST (guarantees Git data is updated)
+        # 2. Extract detailed splits & save full activity JSONs
+        all_splits = []
+        for act in activities:
+            act_id = act.get("id", "")
+            act_date = (act.get("start_date_local") or act.get("startDateLocal", ""))[:10]
+
+            # Save full raw JSON for each activity
+            act_json_path = ACTIVITIES_DIR / f"{act_date}_{act_id}.json"
+            act_json_path.write_text(json.dumps(act, indent=2, default=str), encoding="utf-8")
+
+            # Extract in-run splits / laps
+            act_splits = extract_splits(act)
+            all_splits.extend(act_splits)
+
+        stats["splits_extracted"] = len(all_splits)
+
+        # 3. Build and merge CSV files locally
         activity_rows = [activity_to_row(a) for a in activities]
         wellness_rows = [wellness_to_row(w) for w in wellness]
 
         activities_df = merge_csv(ACTIVITIES_CSV, activity_rows, ACTIVITY_COLUMNS, key="activity_id")
+        splits_df = merge_csv(SPLITS_CSV, all_splits, SPLITS_COLUMNS, key="activity_id", secondary_key="split_num")
         wellness_df = merge_csv(WELLNESS_CSV, wellness_rows, WELLNESS_COLUMNS, key="date")
 
         activities_df.to_csv(ACTIVITIES_CSV, index=False)
+        splits_df.to_csv(SPLITS_CSV, index=False)
         wellness_df.to_csv(WELLNESS_CSV, index=False)
-        log.info(f"Saved {len(activities_df)} activities and {len(wellness_df)} wellness records to CSV.")
+        log.info(f"Saved {len(activities_df)} activities, {len(splits_df)} splits, and {len(wellness_df)} wellness records to CSV.")
 
-        # 3. Generate training_status.md locally
-        status_md = generate_training_status(activities_df.copy(), wellness_df.copy())
+        # 4. Generate training_status.md locally with in-run detailed stats
+        status_md = generate_training_status(activities_df.copy(), wellness_df.copy(), activities)
         status_path = DATA_DIR / "training_status.md"
         status_path.write_text(status_md, encoding="utf-8")
-        log.info("Generated local training_status.md.")
+        log.info("Generated local training_status.md with in-run detailed stats.")
 
-        # 4. Initialize Google Drive Client (if configured)
+        # 5. Initialize Google Drive Client (if configured)
         gdrive = None
         if GDRIVE_FOLDER_ID and (GDRIVE_REFRESH_TOKEN or GDRIVE_SA_KEY_JSON):
             try:
                 gdrive = GDriveClient(
                     root_folder_id=GDRIVE_FOLDER_ID,
-                    sa_key_json=GDRIVE_SA_KEY_JSON,
+                    sa_key_json=GDRIVE_SA_KEY_JSON if not GDRIVE_REFRESH_TOKEN else None,
                     oauth_token=GDRIVE_REFRESH_TOKEN,
                     client_id=GDRIVE_CLIENT_ID,
                     client_secret=GDRIVE_CLIENT_SECRET,
@@ -607,9 +774,12 @@ def main():
         else:
             log.info("Google Drive secrets not configured. Skipping Drive upload.")
 
-        # 5. Upload files to Google Drive (with individual error protection)
+        # 6. Upload files to Google Drive (with individual error protection)
         if gdrive:
-            # Upload .fit.gz files
+            # Ensure activities_json folder exists in Drive
+            json_drive_folder = gdrive._ensure_folder("activities_json", GDRIVE_FOLDER_ID)
+
+            # Upload raw .fit.gz files and full JSONs
             for act in activities:
                 act_id = act.get("id", "")
                 act_date = (act.get("start_date_local") or act.get("startDateLocal", ""))[:10]
@@ -620,43 +790,39 @@ def main():
                 try:
                     year_folder = gdrive.ensure_year_folder(year)
                     filename = f"{act_date}_{act_id}.fit.gz"
-                    if gdrive.file_exists(filename, year_folder):
-                        stats["files_skipped"] += 1
-                        continue
-
-                    file_data = icu.download_activity_file(act_id)
-                    if file_data:
-                        gdrive.upload_bytes(filename, file_data, year_folder)
-                        stats["files_uploaded"] += 1
-                        log.info(f"  Uploaded to Drive: {filename}")
+                    if not gdrive.file_exists(filename, year_folder):
+                        file_data = icu.download_activity_file(act_id)
+                        if file_data:
+                            gdrive.upload_bytes(filename, file_data, year_folder)
+                            stats["files_uploaded"] += 1
+                            log.info(f"  Uploaded to Drive: {filename}")
+                        else:
+                            stats["files_skipped"] += 1
                     else:
                         stats["files_skipped"] += 1
+
+                    # Upload raw activity JSON
+                    json_filename = f"{act_date}_{act_id}.json"
+                    if not gdrive.file_exists(json_filename, json_drive_folder):
+                        act_bytes = json.dumps(act, indent=2, default=str).encode("utf-8")
+                        gdrive.upload_bytes(json_filename, act_bytes, json_drive_folder, mime_type="application/json")
+
                 except Exception as e:
-                    err_msg = str(e)
-                    if "storageQuotaExceeded" in err_msg or "Service Accounts do not have storage quota" in err_msg:
-                        log.warning(
-                            "Google Drive upload skipped: Service Accounts cannot own files in personal Google Drive folders "
-                            "(requires a Google Workspace Shared Drive or OAuth2 user token). "
-                            "Local Git mirror will proceed normally."
-                        )
-                        errors.append("GDrive: Personal @gmail.com folders require OAuth2 token or Shared Drive (0-byte SA quota).")
-                        break
-                    else:
-                        log.warning(f"  File upload failed for {act_id}: {e}")
-                        stats["files_skipped"] += 1
+                    log.warning(f"  File upload failed for {act_id}: {e}")
+                    stats["files_skipped"] += 1
 
-                time.sleep(0.4)
+                time.sleep(0.3)
 
             # Upload CSVs & status to Google Drive
             try:
                 gdrive.upload_or_update("activities.csv", ACTIVITIES_CSV.read_bytes(), GDRIVE_FOLDER_ID, "text/csv")
+                gdrive.upload_or_update("splits.csv", SPLITS_CSV.read_bytes(), GDRIVE_FOLDER_ID, "text/csv")
                 gdrive.upload_or_update("wellness.csv", WELLNESS_CSV.read_bytes(), GDRIVE_FOLDER_ID, "text/csv")
                 gdrive.upload_or_update("training_status.md", status_md.encode("utf-8"), GDRIVE_FOLDER_ID, "text/markdown")
                 log.info("Uploaded CSVs and training_status.md to Google Drive.")
             except Exception as e:
                 log.warning(f"Could not upload CSVs to Google Drive: {e}")
-                if "storageQuotaExceeded" not in str(e):
-                    errors.append(f"GDrive CSV: {e}")
+                errors.append(f"GDrive CSV: {e}")
 
     except Exception as e:
         log.error(f"SYNC FATAL ERROR: {e}", exc_info=True)
@@ -672,8 +838,9 @@ def main():
 | **Mode** | {'Full Backfill' if FULL_BACKFILL else f'Incremental ({LOOKBACK_DAYS}-day lookback)'} |
 | **Duration** | {elapsed}s |
 | **Activities Fetched** | {stats['activities_fetched']} |
+| **Splits / Laps Extracted** | {stats['splits_extracted']} |
 | **Files Uploaded to Drive** | {stats['files_uploaded']} |
-| **Files Skipped** | {stats['files_skipped']} |
+| **Files Skipped (already in Drive)** | {stats['files_skipped']} |
 | **Wellness Records** | {stats['wellness_records']} |
 | **Status** | {'✅ Success' if not errors else '⚠️ Completed with warnings'} |
 
@@ -686,7 +853,6 @@ def main():
     SYNC_LOG.write_text(sync_log, encoding="utf-8")
     log.info(f"Sync complete in {elapsed}s.")
 
-    # Only exit with error if core data extraction itself failed
     if stats["activities_fetched"] == 0 and stats["wellness_records"] == 0 and errors:
         sys.exit(1)
 
