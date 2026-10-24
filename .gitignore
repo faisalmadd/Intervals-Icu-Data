@@ -2,6 +2,7 @@
 *.json
 !data/*.json
 !data/activities/*.json
+!data/streams/*.json
 
 # Python
 __pycache__/

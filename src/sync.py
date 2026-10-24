@@ -15,6 +15,12 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+# Ensure UTF-8 output encoding across Windows / Linux consoles
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 import requests
 import pandas as pd
 
@@ -40,6 +46,8 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 ACTIVITIES_DIR = DATA_DIR / "activities"
 ACTIVITIES_DIR.mkdir(parents=True, exist_ok=True)
+STREAMS_DIR = DATA_DIR / "streams"
+STREAMS_DIR.mkdir(parents=True, exist_ok=True)
 
 LOOKBACK_DAYS = 7  # For incremental daily syncs
 ACTIVITIES_CSV = DATA_DIR / "activities.csv"
@@ -89,6 +97,28 @@ class IntervalsClient:
         resp = self.session.get(url, timeout=60)
         resp.raise_for_status()
         return resp.json()
+
+    def get_activity_streams(self, activity_id: str) -> dict | None:
+        """Fetch second-by-second activity streams (time, distance, altitude, heartrate, cadence, velocity_smooth)."""
+        url = f"{self.base}/activity/{activity_id}/streams"
+        params = {"types": "time,distance,altitude,fixed_altitude,cadence,heartrate,velocity_smooth"}
+        try:
+            resp = self.session.get(url, params=params, timeout=45)
+            if resp.status_code == 200:
+                raw_streams = resp.json()
+                if isinstance(raw_streams, list):
+                    out = {}
+                    for s in raw_streams:
+                        stype = s.get("type")
+                        sdata = s.get("data")
+                        if stype and isinstance(sdata, list):
+                            out[stype] = sdata
+                    return out
+            log.warning(f"  No streams returned for activity {activity_id} (HTTP {resp.status_code})")
+            return None
+        except requests.RequestException as e:
+            log.warning(f"  Failed fetching streams for {activity_id}: {e}")
+            return None
 
     def download_activity_file(self, activity_id: str) -> bytes | None:
         """Download the raw original or processed FIT file for an activity."""
@@ -308,7 +338,23 @@ def _seconds_to_pace(speed_mps: float | None) -> str:
 
 
 def _extract_laps_json(activity: dict) -> str:
-    """Extract laps array as a compact JSON string."""
+    """Extract splits array as a compact JSON string (prefers auto 1km splits if available)."""
+    if "auto_1km_splits" in activity and activity["auto_1km_splits"]:
+        simplified = []
+        for s in activity["auto_1km_splits"]:
+            simplified.append({
+                "km": s.get("split_num"),
+                "dist_km": s.get("distance_km"),
+                "dur_min": s.get("duration_min"),
+                "pace": s.get("pace_min_km"),
+                "gap": s.get("gap_min_km"),
+                "hr": s.get("avg_hr"),
+                "elev_gain": s.get("elevation_gain_m"),
+                "cadence": s.get("avg_cadence_spm"),
+                "type": s.get("split_type"),
+            })
+        return json.dumps(simplified)
+
     laps = activity.get("laps") or activity.get("icu_laps") or activity.get("icu_intervals") or []
     if not laps:
         return ""
@@ -364,6 +410,130 @@ def extract_splits(activity: dict) -> list[dict]:
         })
 
     return split_rows
+
+
+def compute_1km_splits(streams: dict, activity_meta: dict) -> list[dict]:
+    """Compute exact synthetic 1.0 km splits from second-by-second activity streams."""
+    dists = streams.get("distance", [])
+    times = streams.get("time", [])
+    if not dists or not times or len(dists) < 2:
+        return []
+
+    hrs = streams.get("heartrate", [])
+    alts = streams.get("altitude", []) or streams.get("fixed_altitude", [])
+    cads = streams.get("cadence", [])
+
+    total_dist = dists[-1] - dists[0]
+    if total_dist < 200:  # Skip sessions under 200m
+        return []
+
+    splits = []
+    n = len(dists)
+    start_idx = 0
+    split_num = 1
+    target_dist = dists[0] + 1000.0
+
+    for i in range(1, n):
+        is_last = (i == n - 1)
+        if dists[i] >= target_dist or is_last:
+            dist_m = dists[i] - dists[start_idx]
+            dur_s = times[i] - times[start_idx]
+
+            # Merge tiny remainder (< 50m) into previous split
+            if is_last and dist_m < 50 and splits:
+                prev = splits[-1]
+                prev_dist_m = float(prev["distance_km"]) * 1000.0 + dist_m
+                prev_dur_s = float(prev["duration_min"]) * 60.0 + dur_s
+                prev["distance_km"] = round(prev_dist_m / 1000.0, 2)
+                prev["duration_min"] = round(prev_dur_s / 60.0, 2)
+                prev["pace_min_km"] = _seconds_to_pace(prev_dist_m / prev_dur_s if prev_dur_s > 0 else 0)
+                break
+
+            dist_km = round(dist_m / 1000.0, 2)
+            dur_min = round(dur_s / 60.0, 2)
+            avg_spd = dist_m / dur_s if dur_s > 0 else 0
+            pace = _seconds_to_pace(avg_spd)
+
+            s_hrs = [h for h in hrs[start_idx : i + 1] if h and h > 30] if hrs else []
+            avg_hr = round(sum(s_hrs) / len(s_hrs)) if s_hrs else ""
+            max_hr = max(s_hrs) if s_hrs else ""
+
+            s_cads = [c for c in cads[start_idx : i + 1] if c and c > 0] if cads else []
+            avg_cad = round(sum(s_cads) / len(s_cads), 1) if s_cads else ""
+
+            gain = 0.0
+            loss = 0.0
+            if alts and len(alts) >= i + 1:
+                for j in range(start_idx, i):
+                    diff = alts[j + 1] - alts[j]
+                    if diff > 0:
+                        gain += diff
+                    elif diff < 0:
+                        loss += abs(diff)
+
+            # GAP calculation based on running metabolic energy cost (Minetti model)
+            gap = ""
+            if dist_m > 0 and (gain > 0 or loss > 0):
+                net_grade = (gain - loss) / dist_m
+                cost_factor = 1.0 + (3.3 * net_grade if net_grade >= 0 else 1.8 * net_grade)
+                if cost_factor > 0.3:
+                    gap = _seconds_to_pace(avg_spd * cost_factor)
+            if not gap:
+                gap = pace
+
+            splits.append({
+                "date": activity_meta.get("date", ""),
+                "activity_id": activity_meta.get("id", ""),
+                "activity_name": activity_meta.get("name", ""),
+                "activity_type": activity_meta.get("type", ""),
+                "split_num": split_num,
+                "distance_km": dist_km,
+                "duration_min": dur_min,
+                "pace_min_km": pace,
+                "gap_min_km": gap,
+                "avg_hr": avg_hr,
+                "max_hr": max_hr,
+                "elevation_gain_m": round(gain, 1) if gain else "",
+                "elevation_loss_m": round(loss, 1) if loss else "",
+                "avg_cadence_spm": avg_cad,
+                "split_type": "1KM" if dist_km >= 0.95 else f"{dist_km}KM",
+            })
+
+            start_idx = i
+            split_num += 1
+            target_dist += 1000.0
+
+    return splits
+
+
+def compute_decoupling(streams: dict) -> float | None:
+    """Compute Joe Friel aerobic decoupling (aerobic drift) percentage between first and second half."""
+    times = streams.get("time")
+    speeds = streams.get("velocity_smooth")
+    hrs = streams.get("heartrate")
+    if not times or not speeds or not hrs or len(times) < 600:
+        return None
+
+    n = len(times)
+    start_i = int(n * 0.1)  # skip warmup 10%
+    end_i = int(n * 0.95)   # skip cooldown 5%
+    if end_i <= start_i:
+        return None
+    mid_i = start_i + (end_i - start_i) // 2
+
+    h1_pairs = [(s, h) for s, h in zip(speeds[start_i:mid_i], hrs[start_i:mid_i]) if s and s > 0.5 and h and h > 40]
+    h2_pairs = [(s, h) for s, h in zip(speeds[mid_i:end_i], hrs[mid_i:end_i]) if s and s > 0.5 and h and h > 40]
+
+    if not h1_pairs or not h2_pairs:
+        return None
+
+    ef1 = (sum(s for s, h in h1_pairs) / len(h1_pairs)) / (sum(h for s, h in h1_pairs) / len(h1_pairs))
+    ef2 = (sum(s for s, h in h2_pairs) / len(h2_pairs)) / (sum(h for s, h in h2_pairs) / len(h2_pairs))
+
+    if ef1 > 0:
+        decoupling = ((ef1 - ef2) / ef1) * 100.0
+        return round(decoupling, 1)
+    return None
 
 
 def activity_to_row(a: dict) -> dict:
@@ -422,8 +592,8 @@ def activity_to_row(a: dict) -> dict:
         "hr_z4_min": z4_min,
         "hr_z5_min": z5_min,
         "hr_z2_pct": z2_pct,
-        "hrrc": a.get("hrrc") or a.get("hr_recovery", ""),
-        "decoupling_pct": a.get("decoupling", ""),
+        "hrrc": a.get("hrrc") or a.get("hr_recovery") or a.get("icu_hr_recovery", ""),
+        "decoupling_pct": a.get("decoupling") if a.get("decoupling") is not None else (a.get("decoupling_computed", "")),
         "efficiency_factor": a.get("icu_efficiency_factor") or a.get("efficiency_factor", ""),
         "calories": a.get("calories", ""),
         "tss": a.get("icu_training_load", ""),
@@ -445,11 +615,20 @@ def activity_to_row(a: dict) -> dict:
 
 def wellness_to_row(w: dict) -> dict:
     """Convert an Intervals.icu wellness JSON to a flat CSV row."""
+    ctl = w.get("ctl")
+    atl = w.get("atl")
+    tsb = w.get("tsb")
+    if (tsb is None or tsb == "") and ctl is not None and atl is not None:
+        try:
+            tsb = round(float(ctl) - float(atl), 1)
+        except (ValueError, TypeError):
+            pass
+
     return {
         "date": w.get("id", ""),
-        "ctl": w.get("ctl", ""),
-        "atl": w.get("atl", ""),
-        "tsb": w.get("tsb", ""),
+        "ctl": ctl if ctl is not None else "",
+        "atl": atl if atl is not None else "",
+        "tsb": tsb if tsb is not None else "",
         "resting_hr": w.get("restingHR", ""),
         "hrv_rmssd": w.get("hrv", ""),
         "hrv_ln_rmssd": w.get("hrvSDNN", ""),
@@ -541,7 +720,7 @@ def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFr
     well_7 = window(wellness_df, 7)
     well_60 = window(wellness_df, 60)
     hrv_7_avg = well_7["hrv_rmssd"].mean() if "hrv_rmssd" in well_7.columns else float("nan")
-    hrv_60_avg = well_60["hrv_rmssd"].mean() if "hrv_60_avg" in well_60.columns else float("nan")
+    hrv_60_avg = well_60["hrv_rmssd"].mean() if "hrv_rmssd" in well_60.columns else float("nan")
     rhr_7_avg = well_7["resting_hr"].mean() if "resting_hr" in well_7.columns else float("nan")
     rhr_60_avg = well_60["resting_hr"].mean() if "resting_hr" in well_60.columns else float("nan")
     sleep_7_avg = well_7["sleep_duration_hr"].mean() if "sleep_duration_hr" in well_7.columns else float("nan")
@@ -560,6 +739,7 @@ def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFr
         & (wellness_df["_date"] < today_dt - pd.Timedelta(days=7))
     ]
     ctl_now = latest_w.get("ctl", float("nan"))
+    atl_now = latest_w.get("atl", float("nan"))
     ctl_prev = well_prev_7["ctl"].iloc[-1] if len(well_prev_7) > 0 else float("nan")
     ctl_delta = round(ctl_now - ctl_prev, 1) if pd.notna(ctl_now) and pd.notna(ctl_prev) else "N/A"
     ctl_arrow = "↑" if isinstance(ctl_delta, (int, float)) and ctl_delta > 0 else "↓" if isinstance(ctl_delta, (int, float)) and ctl_delta < 0 else "→"
@@ -604,9 +784,9 @@ def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFr
         gain = act.get("total_elevation_gain", "—")
         loss = act.get("total_elevation_loss", "—")
         vert_density = round(float(gain) / dist_km, 1) if dist_km and gain and gain != "—" else "—"
-        hrrc = act.get("hrrc") or act.get("hr_recovery") or "—"
+        hrrc = act.get("hrrc") or act.get("hr_recovery") or act.get("icu_hr_recovery") or "—"
         cadence = act.get("average_cadence", "—")
-        decoupling = act.get("decoupling")
+        decoupling = act.get("decoupling") if act.get("decoupling") is not None else act.get("decoupling_computed")
 
         # HR Zones
         hr_zones = act.get("icu_hr_zone_times") or []
@@ -616,35 +796,51 @@ def generate_training_status(activities_df: pd.DataFrame, wellness_df: pd.DataFr
             for i, s in enumerate(hr_zones[:5]) if s > 0
         ])
 
-        # Splits
-        laps = act.get("laps") or act.get("icu_laps") or act.get("icu_intervals") or []
+        # Splits (prefer auto 1km splits if available)
+        splits_to_show = act.get("auto_1km_splits")
         split_table = []
-        for i, lap in enumerate(laps, 1):
-            l_dist_m = lap.get("distance") or 0
-            l_dist = round(l_dist_m / 1000, 2)
-            l_dur_s = lap.get("moving_time") or lap.get("elapsed_time") or lap.get("duration_secs", 0)
-            l_dur = round(l_dur_s / 60, 2)
-            l_speed = lap.get("average_speed") or (l_dist_m / l_dur_s if l_dur_s and l_dist_m else None)
-            l_pace = _seconds_to_pace(l_speed)
-            l_hr = lap.get("average_heartrate") or lap.get("avg_hr", "—")
-            l_gain = lap.get("total_elevation_gain") or lap.get("elevation_gain", 0)
-            split_table.append(f"| Split {i} | {l_dist} km | {l_dur} min | {l_pace}/km | {l_hr} bpm | +{l_gain} m |")
+        if splits_to_show:
+            for s in splits_to_show:
+                s_num = s.get("split_num")
+                s_dist = s.get("distance_km")
+                s_dur = s.get("duration_min")
+                s_pace = s.get("pace_min_km")
+                s_gap = s.get("gap_min_km")
+                s_hr = s.get("avg_hr") or "—"
+                s_gain = s.get("elevation_gain_m") or "0"
+                gap_part = f" (GAP: {s_gap}/km)" if s_gap and s_gap != s_pace else ""
+                split_table.append(f"| Km {s_num} | {s_dist} km | {s_dur} min | {s_pace}/km{gap_part} | {s_hr} bpm | +{s_gain} m |")
+        else:
+            laps = act.get("laps") or act.get("icu_laps") or act.get("icu_intervals") or []
+            for i, lap in enumerate(laps, 1):
+                l_dist_m = lap.get("distance") or 0
+                l_dist = round(l_dist_m / 1000, 2)
+                l_dur_s = lap.get("moving_time") or lap.get("elapsed_time") or lap.get("duration_secs", 0)
+                l_dur = round(l_dur_s / 60, 2)
+                l_speed = lap.get("average_speed") or (l_dist_m / l_dur_s if l_dur_s and l_dist_m else None)
+                l_pace = _seconds_to_pace(l_speed)
+                l_hr = lap.get("average_heartrate") or lap.get("avg_hr", "—")
+                l_gain = lap.get("total_elevation_gain") or lap.get("elevation_gain", 0)
+                split_table.append(f"| Split {i} | {l_dist} km | {l_dur} min | {l_pace}/km | {l_hr} bpm | +{l_gain} m |")
 
         splits_rendered = "\n".join(split_table) if split_table else "*Continuous single-lap session*"
 
         detailed_runs_md.append(f"""### 🏃 {act_name} — {act_date}
 - **Pacing**: {dist_km} km in {dur_min} min | Avg Pace: **{avg_pace}/km** (GAP: **{gap}/km**)
-- **Cardiovascular**: Avg HR: **{avg_hr} bpm** | Max HR: **{max_hr} bpm** | HR Recovery: **{hrrc} bpm drop** | Decoupling: **{decoupling if decoupling is not None else '—'}%**
+- **Cardiovascular**: Avg HR: **{avg_hr} bpm** | Max HR: **{max_hr} bpm** | HR Recovery: **{hrrc if hrrc and hrrc != '—' else '—'} bpm drop** | Decoupling: **{decoupling if decoupling is not None and decoupling != '' else '—'}%**
 - **Terrain & Vert**: Elevation Gain: **+{gain} m** | Loss: **-{loss} m** (Vert Density: **{vert_density} m/km**) | Cadence: **{cadence} spm**
 - **Heart Rate Zones**: {zone_str if zone_str else "—"}
 
-**Kilometer / Lap Splits**:
+**Kilometer Splits**:
 | Split | Distance | Time | Pace | Avg HR | Vert |
 |:---|:---|:---|:---|:---|:---|
 {splits_rendered}
 """)
 
     tsb_val = latest_w.get("tsb", float("nan"))
+    if pd.isna(tsb_val) and pd.notna(ctl_now) and pd.notna(atl_now):
+        tsb_val = round(ctl_now - atl_now, 1)
+
     tsb_status = ""
     if pd.notna(tsb_val):
         if tsb_val > 10:
@@ -734,12 +930,13 @@ def main():
         wellness = icu.get_wellness(oldest, newest)
         stats["wellness_records"] = len(wellness)
 
-        # 2. Fetch full activity details (intervals=true) & extract splits
+        # 2. Fetch full activity details, streams & extract auto 1km splits
         all_splits = []
         detailed_activities = []
         for act in activities:
             act_id = act.get("id", "")
             act_date = (act.get("start_date_local") or act.get("startDateLocal", ""))[:10]
+            act_type = act.get("type", "")
 
             # Fetch detailed activity with intervals=true
             try:
@@ -752,15 +949,52 @@ def main():
                 log.warning(f"Could not fetch activity detail for {act_id}: {e}")
                 detail = act
 
+            # Fetch or load cached streams for auto 1km splits
+            streams = None
+            is_endurance = any(k in (act_type or "").lower() for k in ["run", "trail", "hike", "walk"])
+            if is_endurance:
+                stream_file = STREAMS_DIR / f"{act_id}.json"
+                if stream_file.exists():
+                    try:
+                        streams = json.loads(stream_file.read_text(encoding="utf-8"))
+                    except Exception:
+                        streams = None
+                if not streams:
+                    try:
+                        streams = icu.get_activity_streams(act_id)
+                        if streams:
+                            stream_file.write_text(json.dumps(streams), encoding="utf-8")
+                    except Exception as e:
+                        log.warning(f"Could not fetch streams for {act_id}: {e}")
+
+            # Extract in-run splits (auto 1km splits if streams available, else fallback)
+            act_splits = []
+            if streams and "distance" in streams and "time" in streams:
+                act_meta = {
+                    "date": act_date,
+                    "id": act_id,
+                    "name": detail.get("name", ""),
+                    "type": act_type,
+                }
+                act_splits = compute_1km_splits(streams, act_meta)
+                if not detail.get("decoupling"):
+                    computed_dec = compute_decoupling(streams)
+                    if computed_dec is not None:
+                        detail["decoupling_computed"] = computed_dec
+
+            # If streams didn't yield splits (e.g. treadmill or short), fallback to recorded laps
+            if not act_splits:
+                act_splits = extract_splits(detail)
+
+            if act_splits:
+                detail["auto_1km_splits"] = act_splits
+                all_splits.extend(act_splits)
+
             detailed_activities.append(detail)
 
             # Save full raw JSON for each activity
             act_json_path = ACTIVITIES_DIR / f"{act_date}_{act_id}.json"
             act_json_path.write_text(json.dumps(detail, indent=2, default=str), encoding="utf-8")
-
-            # Extract in-run splits / laps
-            act_splits = extract_splits(detail)
-            all_splits.extend(act_splits)
 
         stats["splits_extracted"] = len(all_splits)
 
@@ -832,6 +1066,14 @@ def main():
                     if not gdrive.file_exists(json_filename, json_drive_folder):
                         act_bytes = json.dumps(act, indent=2, default=str).encode("utf-8")
                         gdrive.upload_bytes(json_filename, act_bytes, json_drive_folder, mime_type="application/json")
+
+                    # Upload stream JSON if present
+                    stream_file = STREAMS_DIR / f"{act_id}.json"
+                    if stream_file.exists():
+                        streams_drive_folder = gdrive._ensure_folder("streams", GDRIVE_FOLDER_ID)
+                        stream_filename = f"{act_id}_streams.json"
+                        if not gdrive.file_exists(stream_filename, streams_drive_folder):
+                            gdrive.upload_bytes(stream_filename, stream_file.read_bytes(), streams_drive_folder, mime_type="application/json")
 
                 except Exception as e:
                     log.warning(f"  File upload failed for {act_id}: {e}")
